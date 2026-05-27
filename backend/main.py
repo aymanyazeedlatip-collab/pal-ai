@@ -113,7 +113,7 @@ app.add_middleware(
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "http://localhost:5500",
-        "https://YOUR-VERCEL-FRONTEND-URL.vercel.app"
+        "https://pal-ai-t7k6.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
