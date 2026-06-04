@@ -382,6 +382,18 @@ def get_elevation_batch(locations: str):
             "error": str(e)
         }
 
+
+@app.get("/api/config-check")
+def config_check():
+    key = os.environ.get("GOOGLE_WEATHER_API_KEY", "").strip()
+
+    return {
+        "google_weather_key_configured": bool(key),
+        "google_weather_key_length": len(key),
+        "module_variable_configured": bool(GOOGLE_WEATHER_API_KEY),
+        "module_variable_length": len(GOOGLE_WEATHER_API_KEY),
+    }
+
 # ════════════════════════════════════════
 # WATER BODY ANALYZER ENDPOINT
 # ════════════════════════════════════════
