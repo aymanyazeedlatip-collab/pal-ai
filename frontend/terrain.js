@@ -5,7 +5,7 @@ const Terrain = (() => {
   const TERRAIN_API =
     window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? 'http://localhost:8000'
-      : 'https://pal-ai-1.onrender.com';
+      : 'https://pal-ai-tupinhs.onrender.com';
   let scene, camera, renderer, controls, mesh, wireframeMesh;
   let resizeHandler = null;
   let animationId = null;
