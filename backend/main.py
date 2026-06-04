@@ -45,6 +45,7 @@ except ImportError:
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-sonnet-4-20250514")
+GOOGLE_WEATHER_API_KEY = os.environ.get("GOOGLE_WEATHER_API_KEY", "")
 
 warnings.filterwarnings("ignore")
 
@@ -340,6 +341,46 @@ def get_barangays_by_city_municipality(city_municipality_code: str):
     result = sorted(result, key=lambda x: x["name"])
 
     return result
+
+
+@app.get("/api/elevation-batch")
+def get_elevation_batch(locations: str):
+    """
+    Backend proxy for OpenTopoData elevation requests.
+
+    The frontend sends:
+    locations=lat,lng|lat,lng|lat,lng
+
+    The backend calls OpenTopoData instead of the browser.
+    This fixes CORS blocking.
+    """
+    try:
+        if not locations:
+            return {
+                "results": [],
+                "error": "Missing locations"
+            }
+
+        response = requests.get(
+            "https://api.opentopodata.org/v1/srtm30m",
+            params={"locations": locations},
+            timeout=25
+        )
+
+        if response.status_code != 200:
+            return {
+                "results": [],
+                "error": f"OpenTopoData returned status {response.status_code}",
+                "details": response.text[:500]
+            }
+
+        return response.json()
+
+    except Exception as e:
+        return {
+            "results": [],
+            "error": str(e)
+        }
 
 # ════════════════════════════════════════
 # WATER BODY ANALYZER ENDPOINT
@@ -2039,6 +2080,337 @@ def _call_llm(messages: list, max_tokens: int = 1024) -> str:
         return data["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError):
         return "PALADIN could not generate a response. Please try again."
+
+# ════════════════════════════════════════════════════════════
+# LIVE PLANTING FORECAST — Google Weather API
+# ════════════════════════════════════════════════════════════
+
+
+def _live_clamp(value, low=0, high=100):
+    return max(low, min(high, value))
+
+
+def _bell_score(value, optimum, sigma, hard_low, hard_high, missing=55):
+    """
+    Smooth 0–100 score with no flat 100% plateau.
+    The closer the value is to the agronomic optimum, the higher the score.
+    """
+    if value is None:
+        return missing
+
+    value = float(value)
+
+    if value <= hard_low or value >= hard_high:
+        return 0
+
+    score = 100 * math.exp(-0.5 * ((value - optimum) / sigma) ** 2)
+    return _live_clamp(score)
+
+
+def _rainfall_score(rainfall_mm, precip_probability):
+    """
+    Planting/transplanting suitability from daily rain amount and rain probability.
+    Moderate rain is useful for field moisture; dry days and heavy-rain days are penalized.
+    """
+    rainfall = float(rainfall_mm or 0)
+    probability = float(precip_probability or 0)
+
+    # Around 6–10 mm/day is treated as a practical moisture-friendly window.
+    amount_score = _bell_score(
+        rainfall, optimum=8, sigma=7, hard_low=-0.01, hard_high=65, missing=50)
+
+    # Some rain chance is useful, but a near-certain rain event increases operational risk.
+    probability_score = _bell_score(
+        probability, optimum=55, sigma=28, hard_low=-1, hard_high=101, missing=55)
+
+    score = amount_score * 0.72 + probability_score * 0.28
+
+    if rainfall < 1 and probability < 35:
+        score -= 22
+    if rainfall > 30:
+        score -= min(30, (rainfall - 30) * 1.4)
+    if rainfall > 45:
+        score -= 12
+
+    return _live_clamp(score)
+
+
+def _dew_point_celsius(temp_c, humidity):
+    """
+    Estimate dew point using the Magnus formula.
+    """
+    if temp_c is None or humidity is None:
+        return None
+
+    temp_c = float(temp_c)
+    humidity = max(1, min(100, float(humidity)))
+
+    a = 17.27
+    b = 237.7
+
+    alpha = ((a * temp_c) / (b + temp_c)) + math.log(humidity / 100.0)
+    return (b * alpha) / (a - alpha)
+
+
+def _planting_score(
+    temp_c,
+    humidity,
+    rainfall_mm,
+    wind_kph,
+    dew_point_c,
+    thunder_prob,
+    min_temp_c=None,
+    max_temp_c=None,
+    precipitation_probability=0,
+):
+    """
+    PAL-AI daily planting compatibility score.
+    Score is 0–100 and intentionally uses smooth curves, not broad flat ideal ranges.
+    """
+    temp_score = _bell_score(
+        temp_c, optimum=28, sigma=3.8, hard_low=18, hard_high=39)
+    max_temp_score = _bell_score(max_temp_c if max_temp_c is not None else temp_c,
+                                 optimum=31, sigma=4.2, hard_low=20, hard_high=43)
+    min_temp_score = _bell_score(min_temp_c if min_temp_c is not None else temp_c,
+                                 optimum=23, sigma=3.5, hard_low=14, hard_high=32)
+    rainfall_score = _rainfall_score(rainfall_mm, precipitation_probability)
+    humidity_score = _bell_score(
+        humidity, optimum=78, sigma=12, hard_low=38, hard_high=100)
+    dew_score = _bell_score(dew_point_c, optimum=23,
+                            sigma=3.8, hard_low=12, hard_high=32)
+
+    wind = float(wind_kph or 0)
+    wind_score = 100 - max(0, wind - 10) * 2.4
+    if wind <= 1 and humidity is not None and float(humidity) >= 90:
+        wind_score -= 8
+    wind_score = _live_clamp(wind_score)
+
+    score = (
+        temp_score * 0.22 +
+        max_temp_score * 0.12 +
+        min_temp_score * 0.07 +
+        rainfall_score * 0.25 +
+        humidity_score * 0.11 +
+        dew_score * 0.08 +
+        wind_score * 0.07
+    )
+
+    thunder = float(thunder_prob or 0)
+    score -= min(thunder * 0.35, 28)
+
+    if max_temp_c is not None and float(max_temp_c) >= 35:
+        score -= min(28, (float(max_temp_c) - 34.5) * 5.0)
+
+    if humidity is not None and dew_point_c is not None:
+        if float(humidity) >= 90 and float(dew_point_c) >= 25:
+            score -= 12
+        elif float(humidity) >= 86 and float(dew_point_c) >= 24:
+            score -= 6
+
+    if rainfall_mm is not None:
+        rain = float(rainfall_mm)
+        if rain < 0.5 and float(precipitation_probability or 0) < 30:
+            score -= 12
+        if rain > 40:
+            score -= 16
+
+    return round(_live_clamp(score), 1)
+
+
+def _planting_label(score):
+    if score >= 85:
+        return "Excellent"
+    if score >= 70:
+        return "Good"
+    if score >= 55:
+        return "Moderate"
+    if score >= 40:
+        return "Caution"
+    return "Poor"
+
+
+def _planting_advice(score, rainfall_mm, wind_kph, thunder_prob, max_temp_c=None, humidity=None, dew_point_c=None):
+    if thunder_prob and thunder_prob >= 50:
+        return "Avoid planting during likely thunderstorms; wait for a safer field-work window."
+    if max_temp_c is not None and max_temp_c >= 35:
+        return "High heat risk. Avoid stressful establishment work during peak heat."
+    if rainfall_mm is not None and rainfall_mm > 40:
+        return "Heavy rainfall risk. Seeds may wash out or field access may be poor."
+    if rainfall_mm is not None and rainfall_mm < 1:
+        return "Very low rainfall. Plant only if irrigation or field moisture is available."
+    if humidity is not None and dew_point_c is not None and humidity >= 90 and dew_point_c >= 25:
+        return "Very humid and dewy conditions may increase disease pressure; monitor seedlings closely."
+    if wind_kph is not None and wind_kph > 35:
+        return "High wind conditions. Avoid spraying and monitor lodging or seedling stress."
+    if score >= 70:
+        return "Good planting window. Conditions are generally favorable."
+    if score >= 55:
+        return "Usable planting window, but monitor field moisture and disease risk."
+    return "Not ideal. Consider waiting for a better planting window."
+
+
+@app.get("/api/live-planting-forecast")
+def live_planting_forecast(lat: float, lng: float, days: int = 10):
+    """
+    Live planting suitability forecast using Google Weather API.
+
+    Google Weather API daily forecast supports up to 10 days.
+    """
+    if not GOOGLE_WEATHER_API_KEY:
+        return {
+            "ok": False,
+            "error": "GOOGLE_WEATHER_API_KEY is not configured on the backend."
+        }
+
+    if lat < 4 or lat > 21 or lng < 116 or lng > 127:
+        raise HTTPException(
+            status_code=400,
+            detail="Coordinates appear to be outside the Philippines."
+        )
+
+    safe_days = max(1, min(int(days), 10))
+
+    url = "https://weather.googleapis.com/v1/forecast/days:lookup"
+
+    params = {
+        "key": GOOGLE_WEATHER_API_KEY,
+        "location.latitude": lat,
+        "location.longitude": lng,
+        "days": safe_days,
+        "pageSize": safe_days,
+        "unitsSystem": "METRIC",
+        "languageCode": "en",
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=25)
+        response.raise_for_status()
+        raw = response.json()
+
+        forecast_days = raw.get("forecastDays", [])
+        normalized_days = []
+
+        for index, day in enumerate(forecast_days):
+            display = day.get("displayDate", {})
+            daytime = day.get("daytimeForecast", {}) or {}
+            nighttime = day.get("nighttimeForecast", {}) or {}
+
+            max_temp = (day.get("maxTemperature") or {}).get("degrees")
+            min_temp = (day.get("minTemperature") or {}).get("degrees")
+
+            if max_temp is not None and min_temp is not None:
+                avg_temp = (float(max_temp) + float(min_temp)) / 2
+            else:
+                avg_temp = max_temp if max_temp is not None else min_temp
+
+            humidity_day = daytime.get("relativeHumidity")
+            humidity_night = nighttime.get("relativeHumidity")
+
+            humidity_values = [
+                h for h in [humidity_day, humidity_night]
+                if h is not None
+            ]
+
+            humidity = sum(humidity_values) / \
+                len(humidity_values) if humidity_values else None
+
+            precip_day = ((daytime.get("precipitation") or {}).get(
+                "qpf") or {}).get("quantity", 0)
+            precip_night = ((nighttime.get("precipitation") or {}).get(
+                "qpf") or {}).get("quantity", 0)
+            rainfall_mm = float(precip_day or 0) + float(precip_night or 0)
+
+            precip_prob_day = (((daytime.get("precipitation") or {}).get(
+                "probability") or {}).get("percent", 0))
+            precip_prob_night = (((nighttime.get("precipitation") or {}).get(
+                "probability") or {}).get("percent", 0))
+            precip_probability = max(
+                float(precip_prob_day or 0), float(precip_prob_night or 0))
+
+            wind_day = (((daytime.get("wind") or {}).get(
+                "speed") or {}).get("value", 0))
+            wind_night = (((nighttime.get("wind") or {}).get(
+                "speed") or {}).get("value", 0))
+            wind_kph = max(float(wind_day or 0), float(wind_night or 0))
+
+            thunder_prob = max(
+                float(daytime.get("thunderstormProbability") or 0),
+                float(nighttime.get("thunderstormProbability") or 0)
+            )
+
+            condition = (
+                ((daytime.get("weatherCondition") or {}).get(
+                    "description") or {}).get("text")
+                or "Forecast available"
+            )
+
+            icon_base = ((daytime.get("weatherCondition")
+                         or {}).get("iconBaseUri") or "")
+
+            dew_point = _dew_point_celsius(avg_temp, humidity)
+
+            score = _planting_score(
+                temp_c=avg_temp,
+                humidity=humidity,
+                rainfall_mm=rainfall_mm,
+                wind_kph=wind_kph,
+                dew_point_c=dew_point,
+                thunder_prob=thunder_prob,
+                min_temp_c=min_temp,
+                max_temp_c=max_temp,
+                precipitation_probability=precip_probability
+            )
+
+            normalized_days.append({
+                "day_index": index + 1,
+                "date": f"{display.get('year')}-{str(display.get('month')).zfill(2)}-{str(display.get('day')).zfill(2)}",
+                "condition": condition,
+                "icon": f"{icon_base}.svg" if icon_base else "",
+                "score": score,
+                "label": _planting_label(score),
+                "advice": _planting_advice(
+                    score, rainfall_mm, wind_kph, thunder_prob,
+                    max_temp_c=float(
+                        max_temp) if max_temp is not None else None,
+                    humidity=round(
+                        humidity, 1) if humidity is not None else None,
+                    dew_point_c=round(
+                        dew_point, 1) if dew_point is not None else None
+                ),
+                "temperature_c": round(avg_temp, 1) if avg_temp is not None else None,
+                "max_temp_c": round(float(max_temp), 1) if max_temp is not None else None,
+                "min_temp_c": round(float(min_temp), 1) if min_temp is not None else None,
+                "humidity": round(humidity, 1) if humidity is not None else None,
+                "dew_point_c": round(dew_point, 1) if dew_point is not None else None,
+                "rainfall_mm": round(rainfall_mm, 2),
+                "precipitation_probability": round(precip_probability, 1),
+                "wind_kph": round(wind_kph, 1),
+                "thunderstorm_probability": round(thunder_prob, 1),
+            })
+
+        return {
+            "ok": True,
+            "source": "Google Weather API",
+            "requested_days": days,
+            "returned_days": len(normalized_days),
+            "max_google_daily_days": 10,
+            "limit_note": "Google Weather API daily forecast returns up to 10 days only.",
+            "lat": lat,
+            "lng": lng,
+            "days": normalized_days,
+        }
+
+    except requests.HTTPError as e:
+        return {
+            "ok": False,
+            "error": f"Google Weather API error: {str(e)}",
+            "details": response.text[:500] if "response" in locals() else ""
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 
 
 @app.post("/api/paladin/chat")

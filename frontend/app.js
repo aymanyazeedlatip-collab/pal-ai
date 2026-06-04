@@ -69,7 +69,588 @@ const RICE_FACTS = [
   "🔬 IRRI (International Rice Research Institute) is based in Los Baños, Laguna.",
 ];
 
+// ════════════════════════════════════════
+// PAL-AI Voice Narrator
+// ════════════════════════════════════════
+
+let voiceNarratorEnabled = true;
+let lastVoiceKey = null;
+let voiceSequenceTimer = null;
+let welcomeScreenEntered = false;
+let suppressNarrationOnce = false;
+
+const VOICE_CLIPS = {
+  "home-welcome": "/static/assets/voice/home-welcome.mp3",
+  "home-start": "/static/assets/voice/home-start.mp3",
+
+  "forecast-yield": "/static/assets/voice/forecast-yield.mp3",
+  "forecast-live": "/static/assets/voice/forecast-live.mp3",
+  "forecast-longterm": "/static/assets/voice/forecast-longterm.mp3",
+
+  "terrain-3d-open": "/static/assets/voice/terrain-3d-open.mp3",
+  "terrain-3d-complete": "/static/assets/voice/terrain-3d-complete.mp3",
+  "terrain-water": "/static/assets/voice/terrain-water.mp3",
+  "terrain-fertilizer": "/static/assets/voice/terrain-fertilizer.mp3",
+
+  "pest-outbreak-open": "/static/assets/voice/pest-outbreak-open.mp3",
+  "pest-outbreak-complete": "/static/assets/voice/pest-outbreak-complete.mp3",
+  "pest-specific": "/static/assets/voice/pest-specific.mp3",
+
+  "manual-calculation": "/static/assets/voice/manual-calculation.mp3",
+  "about": "/static/assets/voice/about.mp3",
+};
+
+function getVoiceAudio() {
+  return document.getElementById("tab-narrator-audio");
+}
+
+// ════════════════════════════════════════
+// PAL-AI Background Music
+// ════════════════════════════════════════
+
+let bgmStarted = false;
+let bgmFadeTimer = null;
+const BGM_TARGET_VOLUME = 0.14;
+
+function getBgmAudio() {
+  return document.getElementById("palai-bgm-audio");
+}
+
+function fadeBgmTo(targetVolume, duration = 900) {
+  const bgm = getBgmAudio();
+  if (!bgm) return;
+
+  clearInterval(bgmFadeTimer);
+
+  const startVolume = bgm.volume || 0;
+  const steps = 24;
+  const stepTime = duration / steps;
+  let currentStep = 0;
+
+  bgmFadeTimer = setInterval(() => {
+    currentStep += 1;
+    const progress = Math.min(currentStep / steps, 1);
+    bgm.volume = startVolume + (targetVolume - startVolume) * progress;
+
+    if (progress >= 1) {
+      clearInterval(bgmFadeTimer);
+      bgmFadeTimer = null;
+    }
+  }, stepTime);
+}
+
+function startBackgroundMusic() {
+  const bgm = getBgmAudio();
+  if (!bgm) return;
+
+  bgm.loop = true;
+  bgm.muted = false;
+
+  if (!bgmStarted) {
+    bgm.volume = 0;
+    bgmStarted = true;
+  }
+
+  const playPromise = bgm.play();
+
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise
+      .then(() => {
+        fadeBgmTo(BGM_TARGET_VOLUME, 1200);
+      })
+      .catch(() => {
+        console.warn("BGM was blocked until user interaction.");
+      });
+  } else {
+    fadeBgmTo(BGM_TARGET_VOLUME, 1200);
+  }
+}
+
+function setBgmMuteState(isMuted) {
+  const bgm = getBgmAudio();
+  if (!bgm) return;
+
+  bgm.muted = isMuted;
+
+  if (!isMuted && bgmStarted) {
+    bgm.play().catch(() => { });
+    fadeBgmTo(BGM_TARGET_VOLUME, 500);
+  }
+}
+
+function showVoiceUnlockPrompt() {
+  const toast = document.getElementById("voice-unlock-toast");
+  if (toast) toast.classList.remove("hidden");
+}
+
+function hideVoiceUnlockPrompt() {
+  const toast = document.getElementById("voice-unlock-toast");
+  if (toast) toast.classList.add("hidden");
+}
+
+function setVoicePlayingState(isPlaying) {
+  const playBtn = document.getElementById("voice-play-btn");
+  if (playBtn) playBtn.classList.toggle("is-active", isPlaying);
+}
+
+function stopVoiceNarration() {
+  clearTimeout(voiceSequenceTimer);
+  voiceSequenceTimer = null;
+
+  const audio = getVoiceAudio();
+  if (!audio) return;
+
+  audio.onended = null;
+  audio.pause();
+
+  try {
+    audio.currentTime = 0;
+  } catch (err) {
+    console.warn("Voice reset skipped:", err);
+  }
+
+  setVoicePlayingState(false);
+}
+
+function setVoiceMuteState(isMuted) {
+  const audio = getVoiceAudio();
+  const muteBtn = document.getElementById("voice-mute-btn");
+
+  voiceNarratorEnabled = !isMuted;
+
+  if (audio) audio.muted = isMuted;
+
+  setBgmMuteState(isMuted);
+
+  if (muteBtn) {
+    muteBtn.classList.toggle("is-active", isMuted);
+    muteBtn.title = isMuted ? "Voice guide muted" : "Mute voice guide";
+    muteBtn.setAttribute("aria-label", muteBtn.title);
+  }
+
+  if (isMuted) stopVoiceNarration();
+}
+
+function toggleVoiceMute() {
+  setVoiceMuteState(voiceNarratorEnabled);
+}
+
+function playVoiceLine(key, options = {}) {
+  const force = options.force || false;
+
+  if (!voiceNarratorEnabled) return false;
+  if (!key || !VOICE_CLIPS[key]) return false;
+  if (!force && lastVoiceKey === key) return false;
+
+  const audio = getVoiceAudio();
+  if (!audio) return false;
+
+  stopVoiceNarration();
+
+  lastVoiceKey = key;
+  audio.onerror = () => {
+    console.warn(`PAL-AI voice file failed to load: ${VOICE_CLIPS[key]}`);
+  };
+
+  audio.onended = () => setVoicePlayingState(false);
+  audio.src = VOICE_CLIPS[key];
+  audio.volume = 0.86;
+  audio.load();
+
+  const playPromise = audio.play();
+
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise
+      .then(() => hideVoiceUnlockPrompt())
+      .catch(() => showVoiceUnlockPrompt());
+  }
+
+  return true;
+}
+
+function playVoiceSequence(keys, gapMs = 700) {
+  if (!voiceNarratorEnabled) return;
+
+  const audio = getVoiceAudio();
+  if (!audio) return;
+
+  stopVoiceNarration();
+
+  let index = 0;
+
+  function playNext() {
+    if (index >= keys.length) {
+      setVoicePlayingState(false);
+      return;
+    }
+
+    const key = keys[index];
+    index += 1;
+
+    if (!VOICE_CLIPS[key]) {
+      playNext();
+      return;
+    }
+
+    lastVoiceKey = key;
+    audio.onerror = () => {
+      console.warn(`PAL-AI voice file failed to load: ${VOICE_CLIPS[key]}`);
+    };
+
+    audio.onended = null;
+    audio.src = VOICE_CLIPS[key];
+    audio.volume = 0.86;
+    audio.load();
+
+    const playPromise = audio.play();
+
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise
+        .then(() => hideVoiceUnlockPrompt())
+        .catch(() => showVoiceUnlockPrompt());
+    }
+
+    audio.onended = () => {
+      voiceSequenceTimer = setTimeout(playNext, gapMs);
+    };
+  }
+
+  playNext();
+}
+
+function unlockVoiceNarrator() {
+  setVoiceMuteState(false);
+  hideVoiceUnlockPrompt();
+  playVoiceSequence(["home-welcome", "home-start"], 750);
+}
+
+function getCurrentVoiceTarget() {
+  const activeMainTab = document.querySelector('.nav-btn.active')?.dataset.tab || 'home';
+
+  if (activeMainTab === 'home') {
+    return ["home-welcome", "home-start"];
+  }
+
+  if (activeMainTab === 'forecast') {
+    const forecastVoiceMap = {
+      yield: "forecast-yield",
+      live: "forecast-live",
+      longterm: "forecast-longterm",
+    };
+
+    return forecastVoiceMap[currentAnalysisSubtabs.forecast || 'yield'];
+  }
+
+  if (activeMainTab === 'terrain') {
+    const terrainVoiceMap = {
+      "terrain-3d": "terrain-3d-open",
+      "terrain-water": "terrain-water",
+      "terrain-fertilizer": "terrain-fertilizer",
+    };
+
+    return terrainVoiceMap[currentAnalysisSubtabs.terrain || 'terrain-3d'];
+  }
+
+  if (activeMainTab === 'pest') {
+    const pestVoiceMap = {
+      "pest-outbreak": "pest-outbreak-open",
+      "pest-specific": "pest-specific",
+    };
+
+    return pestVoiceMap[currentAnalysisSubtabs.pest || 'pest-outbreak'];
+  }
+
+  if (activeMainTab === 'calculator') return "manual-calculation";
+  if (activeMainTab === 'about') return "about";
+
+  return null;
+}
+
+function replayCurrentVoiceLine() {
+  setVoiceMuteState(false);
+
+  const target = getCurrentVoiceTarget();
+
+  if (Array.isArray(target)) {
+    playVoiceSequence(target, 750);
+  } else if (target) {
+    playVoiceLine(target, { force: true });
+  }
+}
+
+function enterPALAIWebsite() {
+  if (welcomeScreenEntered) return;
+  welcomeScreenEntered = true;
+
+  const welcomeScreen = document.getElementById("palai-welcome-screen");
+
+  document.body.classList.remove("welcome-active");
+  hideVoiceUnlockPrompt();
+  setVoiceMuteState(false);
+  startBackgroundMusic();
+
+  if (welcomeScreen) {
+    welcomeScreen.classList.add("is-leaving");
+
+    setTimeout(() => {
+      welcomeScreen.classList.add("hidden");
+      welcomeScreen.style.display = "none";
+    }, 900);
+  }
+
+  setTimeout(() => {
+    playVoiceSequence(["home-welcome", "home-start"], 750);
+  }, 650);
+}
+
+// Prepare the voice controls, but do not play audio yet.
+// The Home voice starts only after clicking Enter Website.
+window.addEventListener("DOMContentLoaded", () => {
+  const audio = getVoiceAudio();
+
+  if (audio) {
+    audio.addEventListener("play", () => setVoicePlayingState(true));
+    audio.addEventListener("pause", () => setVoicePlayingState(false));
+    audio.addEventListener("ended", () => setVoicePlayingState(false));
+  }
+
+  setVoiceMuteState(false);
+});
+
 // Navigation Panel Sidebar
+
+// ════════════════════════════════════════
+// Dropdown Navigation + Analysis Subtabs
+// ════════════════════════════════════════
+
+const currentAnalysisSubtabs = {
+  forecast: 'yield',
+  terrain: 'terrain-3d',
+  pest: 'pest-outbreak'
+};
+
+function toggleAnalysisDropdown(menuId) {
+  const menu = document.getElementById(menuId);
+  if (!menu) return;
+
+  const wrapper = menu.closest('.nav-dropdown');
+  const willOpen = !menu.classList.contains('open');
+
+  menu.classList.toggle('open', willOpen);
+  if (wrapper) wrapper.classList.toggle('open', willOpen);
+}
+
+function handleAnalysisParentClick(tabName, menuId) {
+  const menu = document.getElementById(menuId);
+  const wasOpen = menu && menu.classList.contains('open');
+
+  // Always switch to the main tab first.
+  switchTab(tabName);
+
+  // Clicking the same parent tab controls only its own dropdown.
+  if (wasOpen) {
+    closeAnalysisDropdown(menuId);
+  } else {
+    openAnalysisDropdown(menuId);
+  }
+}
+
+function openAnalysisDropdown(menuId) {
+  const menu = document.getElementById(menuId);
+  if (!menu) return;
+
+  const wrapper = menu.closest('.nav-dropdown');
+
+  menu.classList.add('open');
+  if (wrapper) wrapper.classList.add('open');
+}
+
+function closeAnalysisDropdown(menuId) {
+  const menu = document.getElementById(menuId);
+  if (!menu) return;
+
+  const wrapper = menu.closest('.nav-dropdown');
+
+  menu.classList.remove('open');
+  if (wrapper) wrapper.classList.remove('open');
+}
+
+function hideElementsBySelector(selectors) {
+  selectors.forEach(selector => {
+    document.querySelectorAll(selector).forEach(el => {
+      el.classList.add('subsection-hidden');
+    });
+  });
+}
+
+function showElementsBySelector(selectors) {
+  selectors.forEach(selector => {
+    document.querySelectorAll(selector).forEach(el => {
+      el.classList.remove('subsection-hidden');
+    });
+  });
+}
+
+function applyPestSubtabVisibility(subtab) {
+  const outbreakPanel = document.getElementById('pest-outbreak-results-panel');
+  const specificPanel = document.getElementById('pest-specific-results-panel');
+  const formCard = document.querySelector('.pest-form-card');
+
+  const showOutbreak = subtab === 'pest-outbreak';
+  const showSpecific = subtab === 'pest-specific';
+
+  if (formCard) {
+    formCard.classList.toggle('subsection-hidden', !showOutbreak);
+    formCard.style.display = showOutbreak ? '' : 'none';
+  }
+
+  if (outbreakPanel) {
+    outbreakPanel.classList.toggle('subsection-hidden', !showOutbreak);
+    outbreakPanel.style.display = showOutbreak ? '' : 'none';
+  }
+
+  if (specificPanel) {
+    specificPanel.classList.toggle('subsection-hidden', !showSpecific);
+    specificPanel.style.display = showSpecific ? '' : 'none';
+  }
+}
+
+function refreshVisibleAnalysisVisuals(parent, subtab) {
+  setTimeout(() => {
+    try {
+      if (parent === 'terrain') {
+        if (subtab === 'terrain-3d') {
+          if (terrainMiniMap) terrainMiniMap.invalidateSize();
+          if (terrainProfileChart) terrainProfileChart.resize();
+
+          if (window.Terrain && typeof Terrain.resumeRenderer === 'function') {
+            Terrain.resumeRenderer();
+          }
+        }
+
+        if (subtab === 'terrain-water') {
+          const canvas = document.getElementById('waterBodyCanvas');
+          if (canvas && latestTerrainLocation && typeof redrawWaterBodyAnalyzer === 'function') {
+            redrawWaterBodyAnalyzer();
+          }
+        }
+      }
+
+      if (parent === 'pest') {
+        applyPestSubtabVisibility(subtab);
+
+        // Only refresh Bayesian charts/heatmap when Outbreak Analysis is active.
+        if (subtab === 'pest-outbreak') {
+          if (pestMiniMap) pestMiniMap.invalidateSize();
+
+          if (pestRiskData) {
+            if (typeof redrawPestHeatmapVisuals === 'function') {
+              redrawPestHeatmapVisuals();
+            }
+
+            if (typeof renderPestAnalyticsCharts === 'function') {
+              renderPestAnalyticsCharts(pestRiskData);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Subtab visual refresh skipped:', err);
+    }
+  }, 180);
+}
+
+function switchAnalysisSubtab(parent, subtab, shouldSwitchMainTab = true) {
+  if (shouldSwitchMainTab) {
+    suppressNarrationOnce = true;
+    switchTab(parent);
+    suppressNarrationOnce = false;
+  }
+
+  currentAnalysisSubtabs[parent] = subtab;
+  if (!suppressNarrationOnce) {
+    const analysisVoiceMap = {
+      "terrain-3d": "terrain-3d-open",
+      "terrain-water": "terrain-water",
+      "terrain-fertilizer": "terrain-fertilizer",
+      "pest-outbreak": "pest-outbreak-open",
+      "pest-specific": "pest-specific",
+    };
+
+    playVoiceLine(analysisVoiceMap[subtab], { force: true });
+  }
+
+  if (parent === 'terrain') {
+    const terrain3D = [
+      '.terrain-controls-card',
+      '#terrain-viewer-card',
+      '#terrain-scores',
+      '#spatio-section'
+    ];
+
+    const terrainWater = [
+      '#water-analyzer-section'
+    ];
+
+    const terrainFertilizer = [
+      '#fertilizer-analysis-section'
+    ];
+
+    const allTerrainSections = [
+      ...terrain3D,
+      ...terrainWater,
+      ...terrainFertilizer
+    ];
+
+    hideElementsBySelector(allTerrainSections);
+
+    if (subtab === 'terrain-3d') {
+      showElementsBySelector(terrain3D);
+
+      // Show terrain results only if analysis already generated them.
+      if (latestTerrainScores) {
+        const scores = document.getElementById('terrain-scores');
+        if (scores) scores.classList.remove('hidden');
+      }
+
+      if (latestSpatiotemporalData) {
+        const spatio = document.getElementById('spatio-section');
+        if (spatio) spatio.classList.remove('hidden');
+      }
+    }
+
+    if (subtab === 'terrain-water') {
+      showElementsBySelector(terrainWater);
+
+      // Show water analyzer if terrain has already been generated.
+      if (latestTerrainLocation) {
+        const water = document.getElementById('water-analyzer-section');
+        if (water) water.classList.remove('hidden');
+      }
+    }
+
+    if (subtab === 'terrain-fertilizer') {
+      showElementsBySelector(terrainFertilizer);
+
+      // Show fertilizer section if analysis already generated it.
+      if (latestFertilizerAnalysis) {
+        const fertilizer = document.getElementById('fertilizer-analysis-section');
+        if (fertilizer) fertilizer.classList.remove('hidden');
+      }
+    }
+  }
+
+  if (parent === 'pest') {
+    applyPestSubtabVisibility(subtab);
+  }
+
+  document.querySelectorAll(`[data-sub-parent="${parent}"]`).forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.subTarget === subtab);
+  });
+
+  refreshVisibleAnalysisVisuals(parent, subtab);
+}
+
 function switchTab(tabName) {
   document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -79,6 +660,37 @@ function switchTab(tabName) {
 
   const btn = document.querySelector(`[data-tab="${tabName}"]`);
   if (btn) btn.classList.add('active');
+
+  if (tabName === 'home') {
+    startBackgroundMusic();
+  }
+
+  if (tabName === 'calculator') {
+    playVoiceLine("manual-calculation", { force: true });
+  }
+
+  if (tabName === 'about') {
+    playVoiceLine("about", { force: true });
+  }
+
+  if (tabName === 'forecast') {
+    switchForecastSubtab(currentAnalysisSubtabs.forecast || 'yield', false);
+
+    setTimeout(() => {
+      if (!forecastMap) initForecastMap();
+      if (forecastMap) forecastMap.invalidateSize();
+    }, 200);
+
+  } else if (tabName === 'terrain') {
+    switchAnalysisSubtab('terrain', currentAnalysisSubtabs.terrain || 'terrain-3d', false);
+  } else if (tabName === 'pest') {
+    switchAnalysisSubtab('pest', currentAnalysisSubtabs.pest || 'pest-outbreak', false);
+  }
+  else if (tabName === 'about') {
+    setTimeout(() => {
+      initAboutTimeline();
+    }, 80);
+  }
 
   // Close sidebar only on mobile after clicking a navigation item.
   if (window.innerWidth <= 860) {
@@ -109,6 +721,158 @@ function switchTab(tabName) {
       }
     }, 250);
   }
+}
+
+// ════════════════════════════════════════
+// ABOUT TAB — Interactive Project Timeline
+// ════════════════════════════════════════
+
+const ABOUT_TIMELINE = {
+  "2024": {
+    phase: "Pioneering Phase",
+    title: "Sow Timely, Grow Primely",
+    projectName: "Sow Timely, Grow Primely",
+    coreTech: "MLR Forecasting",
+    milestone: "First NSTF Appearance",
+    researchers: ["Alexander Callueng", "Febellen Rejas", "Ayman Latip"],
+    description:
+      "This year was the pioneering phase of the project. It first started with only the rice yield forecasting algorithm developed, with no system or website yet. It developed the mathematical models for forecasting using only Multiple Linear Regression. The project was named “Sow Timely, Grow Primely” and earned its first appearance at the National Science and Technology Fair."
+  },
+  "2025": {
+    phase: "Automation and System Phase",
+    title: "GR-AI-N",
+    projectName: "GR-AI-N",
+    coreTech: "Automated Web Tool + AI Decision Support",
+    milestone: "Second NSTF Appearance",
+    researchers: ["Ayman Latip"],
+    description:
+      "This year was the automation and system phase. Using the forecasting models, the project evolved into a website-type tool for farmers. With only a few clicks, farmers could estimate rice yield and calculate optimal planting times. This pushed the project toward AI-powered systems, complete with an AI-assisted decision support system for farmers. The project was called GR-AI-N and earned its second appearance at the NSTF."
+  },
+  "2026": {
+    phase: "Expansion and Precision Agriculture Phase",
+    title: "PAL-AI",
+    projectName: "PAL-AI",
+    coreTech: "3D Terrain + Water + Pest Outbreak Intelligence",
+    milestone: "Target Third NSTF Appearance",
+    researchers: ["Mary Gamotia", "Prince Ace Gumpal", "Shane Pano"],
+    description:
+      "The latest iteration of the project is now passed down to three students: Mary Gamotia, Prince Ace Gumpal, and Shane Pano. This version improves the established AI system by adding 3D Terrain Analysis using satellite-based open-source data, an irrigation and water body detector system, and a Pest Outbreak Prevention system for a more powerful and complete farmer analysis. It expands the AI integration into more advanced features with hopes of reaching a third NSTF appearance."
+  }
+};
+
+let aboutCurrentYear = "2024";
+let aboutTimelineReady = false;
+
+function initAboutTimeline() {
+  if (aboutTimelineReady) {
+    setAboutTimelineYear(aboutCurrentYear);
+    return;
+  }
+
+  aboutTimelineReady = true;
+
+  document.querySelectorAll('.about-section, .about-function-card, .about-time-machine, .about-future-card').forEach(el => {
+    el.classList.add('about-reveal');
+  });
+
+  if ('IntersectionObserver' in window) {
+    const aboutObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in-view');
+        }
+      });
+    }, { threshold: 0.16 });
+
+    document.querySelectorAll('.about-reveal').forEach(el => aboutObserver.observe(el));
+  } else {
+    document.querySelectorAll('.about-reveal').forEach(el => el.classList.add('in-view'));
+  }
+
+  setAboutTimelineYear("2024");
+}
+
+function setAboutTimelineYear(year) {
+  const data = ABOUT_TIMELINE[year];
+  if (!data) return;
+
+  aboutCurrentYear = year;
+
+  const years = ["2024", "2025", "2026"];
+  const index = years.indexOf(year);
+  const progress = index <= 0 ? 0 : index === 1 ? 50 : 100;
+
+  const progressEl = document.getElementById('about-time-progress');
+  if (progressEl) progressEl.style.width = `${progress}%`;
+
+  document.querySelectorAll('.about-year-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.year === year);
+  });
+
+  document.querySelectorAll('.about-time-node').forEach(node => {
+    node.classList.toggle('active', node.dataset.year === year);
+  });
+
+  const stage = document.querySelector('.about-timeline-stage');
+  if (stage) {
+    stage.classList.remove('about-year-changing');
+    void stage.offsetWidth;
+    stage.classList.add('about-year-changing');
+  }
+
+  const photo = document.getElementById('about-photo-placeholder');
+  const photoYear = photo ? photo.querySelector('.about-photo-year') : null;
+
+  if (photoYear) photoYear.textContent = year;
+
+  setText('about-phase-badge', data.phase);
+  setText('about-year-number', year);
+  setText('about-year-title', data.title);
+  setText('about-year-description', data.description);
+  setText('about-project-name', data.projectName);
+  setText('about-core-tech', data.coreTech);
+  setText('about-milestone', data.milestone);
+
+  const researchers = document.getElementById('about-researchers-list');
+  if (researchers) {
+    researchers.innerHTML = data.researchers.map(name => `<span>${name}</span>`).join('');
+  }
+
+  const yearPhoto = document.getElementById('about-year-photo');
+  if (yearPhoto) {
+    yearPhoto.src = `/static/assets/about/${year}.jpg`;
+  }
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function aboutTimelineNext() {
+  const years = ["2024", "2025", "2026"];
+  const currentIndex = years.indexOf(aboutCurrentYear);
+  const nextYear = years[Math.min(currentIndex + 1, years.length - 1)];
+  setAboutTimelineYear(nextYear);
+}
+
+function aboutTimelinePrev() {
+  const years = ["2024", "2025", "2026"];
+  const currentIndex = years.indexOf(aboutCurrentYear);
+  const prevYear = years[Math.max(currentIndex - 1, 0)];
+  setAboutTimelineYear(prevYear);
+}
+
+function aboutJumpToTimeline() {
+  switchTab('about');
+
+  setTimeout(() => {
+    const timeline = document.getElementById('about-timeline-section');
+    if (timeline) {
+      timeline.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    initAboutTimeline();
+  }, 120);
 }
 
 function toggleSidebar() {
@@ -296,6 +1060,782 @@ function populateRegionsFallback() {
       el.appendChild(opt);
     });
   });
+}
+
+// ════════════════════════════════════════
+// FORECAST SUBTABS
+// ════════════════════════════════════════
+
+let longTermPlantingChart = null;
+let longTermPlantingData = [];
+
+function getProjectionValue(proj, key, year) {
+  if (!proj || !Array.isArray(proj.years) || !Array.isArray(proj[key])) return null;
+
+  const index = proj.years.findIndex(y => Number(y) === Number(year));
+  if (index >= 0) return Number(proj[key][index]);
+
+  return null;
+}
+
+function smoothClimateScore(value, optimum, sigma, hardLow, hardHigh, missing = 55) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return missing;
+
+  const v = Number(value);
+  if (v <= hardLow || v >= hardHigh) return 0;
+
+  const score = 100 * Math.exp(-0.5 * Math.pow((v - optimum) / sigma, 2));
+  return Math.max(0, Math.min(100, score));
+}
+
+function regulatedClimateScore(value, optimum, sigma, hardLow, hardHigh, missing = 62) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return missing;
+
+  const v = Number(value);
+  const curveScore = 100 * Math.exp(-0.5 * Math.pow((v - optimum) / sigma, 2));
+  const boundaryPenalty =
+    v < hardLow ? Math.min(18, (hardLow - v) * 1.4) :
+      v > hardHigh ? Math.min(18, (v - hardHigh) * 1.4) :
+        0;
+
+  // Long-range climate projections should not collapse to 0 from one extreme variable.
+  // This keeps the value as a planning compatibility index, not a fake exact probability.
+  return Math.max(38, Math.min(93, curveScore - boundaryPenalty));
+}
+
+function getPlantingRiskLabel(score) {
+  if (score >= 85) return 'Excellent';
+  if (score >= 70) return 'Good';
+  if (score >= 55) return 'Moderate';
+  if (score >= 40) return 'Caution';
+  return 'Poor';
+}
+
+function getLongTermScoreColor(score) {
+  if (score >= 85) return '#16a34a';
+  if (score >= 70) return '#84cc16';
+  if (score >= 55) return '#eab308';
+  if (score >= 40) return '#f97316';
+  return '#dc2626';
+}
+
+function getQuarterFromWeek(week) {
+  return Math.min(4, Math.max(1, Math.ceil(Number(week) / 13)));
+}
+
+function getWeekRangeFromWeek(year, week) {
+  const start = new Date(Date.UTC(Number(year), 0, 1));
+  start.setUTCDate(start.getUTCDate() + (Number(week) - 1) * 7);
+
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+
+  const fmt = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' });
+  const startLabel = fmt.format(start);
+  const endLabel = fmt.format(end);
+
+  return {
+    start,
+    end,
+    label: `${startLabel}–${endLabel}`,
+    fullLabel: `${startLabel}–${endLabel}, ${year}`
+  };
+}
+
+function getMonthFromWeek(week) {
+  const mid = new Date(Date.UTC(2026, 0, 1));
+  mid.setUTCDate(mid.getUTCDate() + (Number(week) - 1) * 7 + 3);
+  return mid.toLocaleDateString('en-PH', { month: 'long' });
+}
+
+function buildLongTermScoringContext(data) {
+  const years = (data.annual || [])
+    .map(r => Number(r.year))
+    .filter(y => y >= 2025 && y <= 2100);
+
+  const yields = years
+    .map(year => Number((data.annual || []).find(r => Number(r.year) === year)?.yield || 0))
+    .filter(v => Number.isFinite(v) && v > 0);
+
+  return {
+    years,
+    minYield: yields.length ? Math.min(...yields) : 0,
+    maxYield: yields.length ? Math.max(...yields) : 1
+  };
+}
+
+function normalizeYieldScore(yieldValue, context) {
+  const y = Number(yieldValue || 0);
+  const minY = Number(context.minYield || 0);
+  const maxY = Number(context.maxYield || 0);
+
+  if (!Number.isFinite(y) || y <= 0 || maxY <= minY) return 55;
+
+  // Keep yield helpful but never perfect. This prevents early high-yield years from becoming 100%.
+  const normalized = (y - minY) / (maxY - minY);
+  return 42 + normalized * 48; // 42–90 only
+}
+
+function getQuarterYield(year, quarter, data, fallbackYield) {
+  const qRows = (data.quarterly || []).filter(r => Number(r.year) === Number(year));
+  const qRow = qRows.find(r => Number(r.quarter) === Number(quarter));
+  return Number(qRow?.yield || fallbackYield || 0);
+}
+
+function estimateWeekSuitability(year, week, data, context) {
+  const proj = data.climate_projections || {};
+  const annualRow = (data.annual || []).find(r => Number(r.year) === Number(year));
+  const annualYield = Number(annualRow?.yield || 0);
+
+  const temp = getProjectionValue(proj, 'temperature', year);
+  const precip = getProjectionValue(proj, 'precipitation', year);
+  const humidity = getProjectionValue(proj, 'humidity', year);
+  const wind = getProjectionValue(proj, 'wind_speed', year);
+  const dew = getProjectionValue(proj, 'dew_point', year);
+
+  const quarter = getQuarterFromWeek(week);
+  const qRows = (data.quarterly || []).filter(r => Number(r.year) === Number(year));
+  const qYield = getQuarterYield(year, quarter, data, annualYield);
+
+  const bestQuarterRow = qRows.length
+    ? [...qRows].sort((a, b) => Number(b.yield || 0) - Number(a.yield || 0))[0]
+    : null;
+
+  const bestQuarter = Number(bestQuarterRow?.quarter || quarter || 3);
+
+  // Quarterly centers are seasonal anchors only. PAL-AI still tests all 52 weeks.
+  const idealWeekByQuarter = { 1: 7, 2: 20, 3: 33, 4: 45 };
+  const idealWeek = idealWeekByQuarter[bestQuarter] || 33;
+
+  const weekDistance = Math.abs(Number(week) - idealWeek);
+  const seasonalScore = Math.min(91, 7 + 84 * Math.exp(-0.5 * Math.pow(weekDistance / 5.4, 2)));
+
+  // Regulated climate curves prevent far-future projections from becoming unrealistically perfect or unrealistically zero.
+  const tempScore = regulatedClimateScore(temp, 28, 4.4, 18, 39);
+  const rainScore = regulatedClimateScore(precip, 8, 8.2, 0, 65);
+  const humidityScore = regulatedClimateScore(humidity, 77, 13.5, 38, 100);
+  const dewScore = regulatedClimateScore(dew, 23, 4.6, 12, 32);
+  const windScore = wind === null || wind === undefined
+    ? 62
+    : Math.max(42, Math.min(91, 91 - Math.max(0, Number(wind) - 8) * 1.55));
+
+  const annualYieldScore = normalizeYieldScore(annualYield, context);
+  const quarterYieldScore = normalizeYieldScore(qYield, context);
+
+  // Keep future uncertainty real but not so strong that the year 2080+ always becomes red.
+  const horizon = Math.max(0, (Number(year) - 2026) / (2100 - 2026));
+  const uncertaintyPenalty = 1.4 + Math.min(8.5, horizon * 8.5);
+
+  // Deterministic interannual variability avoids repeated ties while staying reproducible.
+  const regionSeed = Number(currentRegionId || 13);
+  const variability = Math.abs(Math.sin(Number(year) * 12.9898 + regionSeed * 78.233));
+  const naturalVariabilityPenalty = 0.8 + variability * 3.4;
+  const naturalVariabilityNudge = Math.sin(Number(year) * 0.73 + regionSeed * 1.17) * 1.6;
+
+  let climatePenalty = 0;
+  if (temp !== null && Number(temp) >= 33) climatePenalty += Math.min(7, (Number(temp) - 32.5) * 1.25);
+  if (humidity !== null && Number(humidity) >= 88) climatePenalty += Math.min(5, (Number(humidity) - 87) * 0.55);
+  if (dew !== null && Number(dew) >= 26) climatePenalty += Math.min(4, (Number(dew) - 25.5) * 0.85);
+  if (precip !== null && Number(precip) < 1) climatePenalty += 3.5;
+  if (precip !== null && Number(precip) > 32) climatePenalty += Math.min(6, (Number(precip) - 32) * 0.42);
+  if (wind !== null && Number(wind) > 30) climatePenalty += Math.min(5, (Number(wind) - 30) * 0.45);
+
+  // If the chosen week is not in the strongest quarter, reduce confidence slightly.
+  const bestQuarterYield = Number(bestQuarterRow?.yield || qYield || annualYield || 0);
+  const quarterMismatchPenalty = bestQuarterYield > 0
+    ? Math.max(0, ((bestQuarterYield - qYield) / bestQuarterYield) * 10)
+    : 0;
+
+  const rawScore =
+    seasonalScore * 0.22 +
+    tempScore * 0.16 +
+    rainScore * 0.12 +
+    humidityScore * 0.08 +
+    dewScore * 0.06 +
+    windScore * 0.06 +
+    annualYieldScore * 0.15 +
+    quarterYieldScore * 0.15 -
+    uncertaintyPenalty -
+    naturalVariabilityPenalty -
+    climatePenalty -
+    quarterMismatchPenalty;
+
+  // Logistic regulation: raises overly collapsed far-future scores, lowers near-perfect scores,
+  // and guarantees no long-term projection displays as 100%.
+  const regulatedScore = 50 + (43 / (1 + Math.exp(-(rawScore - 55) / 13))) + naturalVariabilityNudge;
+  return Math.max(50, Math.min(93.2, regulatedScore));
+}
+
+function generateLongTermPlantingWindows() {
+  const status = document.getElementById('longterm-status');
+
+  if (!forecastData) {
+    if (status) {
+      status.textContent = 'Please run the Yield Forecast first. PAL-AI needs the long-range forecast data before calculating planting windows.';
+      status.className = 'longterm-status error';
+      status.classList.remove('hidden');
+    }
+    return;
+  }
+
+  const context = buildLongTermScoringContext(forecastData);
+  const years = context.years;
+
+  const results = years.map(year => {
+    const weeklyScores = [];
+
+    for (let week = 1; week <= 52; week++) {
+      weeklyScores.push({
+        week,
+        score: estimateWeekSuitability(year, week, forecastData, context)
+      });
+    }
+
+    const sorted = [...weeklyScores].sort((a, b) => b.score - a.score);
+    const best = sorted[0];
+    const alternatives = sorted.slice(1, 4).map(w => {
+      const altRange = getWeekRangeFromWeek(year, w.week);
+      return {
+        week: w.week,
+        weekRange: altRange.label,
+        weekRangeFull: altRange.fullLabel,
+        weekStartISO: altRange.start.toISOString().slice(0, 10),
+        weekEndISO: altRange.end.toISOString().slice(0, 10),
+        score: Number(w.score.toFixed(1))
+      };
+    });
+
+    const weekRange = getWeekRangeFromWeek(year, best.week);
+    const risk = getPlantingRiskLabel(best.score);
+    const month = getMonthFromWeek(best.week);
+
+    return {
+      year,
+      bestWeek: best.week,
+      weekRange: weekRange.label,
+      weekRangeFull: weekRange.fullLabel,
+      weekStartISO: weekRange.start.toISOString().slice(0, 10),
+      weekEndISO: weekRange.end.toISOString().slice(0, 10),
+      month,
+      monthIndex: weekRange.start.getUTCMonth(),
+      score: Number(best.score.toFixed(1)),
+      risk,
+      alternatives
+    };
+  });
+
+  longTermPlantingData = results;
+
+  renderLongTermPlantingWindows(results);
+
+  if (status) {
+    status.textContent = `Generated model-based planting windows for ${results.length} years using PAL-AI yield and climate projections.`;
+    status.className = 'longterm-status success';
+    status.classList.remove('hidden');
+  }
+}
+
+function renderLongTermPlantingWindows(results) {
+  if (!results.length) return;
+
+  const bestOverall = [...results].sort((a, b) => b.score - a.score)[0];
+  const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+
+  const monthCounts = {};
+  results.forEach(r => {
+    monthCounts[r.month] = (monthCounts[r.month] || 0) + 1;
+  });
+
+  const commonMonth = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+
+  document.getElementById('lt-best-year').textContent = bestOverall.year;
+  document.getElementById('lt-common-month').textContent = commonMonth;
+  document.getElementById('lt-average-score').textContent = `${avgScore.toFixed(1)}%`;
+
+  const summary = document.getElementById('longterm-summary');
+  if (summary) summary.classList.remove('hidden');
+
+  renderLongTermCalendarBoard(results, bestOverall.year);
+  renderLongTermPlantingTable(results);
+  focusLongTermYear(bestOverall.year);
+}
+
+function parseIsoDateUTC(iso) {
+  return new Date(`${iso}T00:00:00Z`);
+}
+
+function isSameUtcDate(a, b) {
+  return a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate();
+}
+
+function isDateBetweenUTC(date, start, end) {
+  const time = date.getTime();
+  return time >= start.getTime() && time <= end.getTime();
+}
+
+function buildActualPlantingCalendar(item) {
+  const bestStart = parseIsoDateUTC(item.weekStartISO);
+  const bestEnd = parseIsoDateUTC(item.weekEndISO);
+  const monthIndex = bestStart.getUTCMonth();
+  const year = Number(item.year);
+  const monthStart = new Date(Date.UTC(year, monthIndex, 1));
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  const firstWeekday = monthStart.getUTCDay();
+  const monthName = monthStart.toLocaleDateString('en-PH', { month: 'long', timeZone: 'UTC' });
+  const color = getLongTermScoreColor(item.score);
+
+  const altRanges = (item.alternatives || []).map(alt => ({
+    ...alt,
+    start: parseIsoDateUTC(alt.weekStartISO),
+    end: parseIsoDateUTC(alt.weekEndISO)
+  }));
+
+  const blankCells = Array.from({ length: firstWeekday }).map(() => '<div class="lt-month-day empty"></div>');
+
+  const dayCells = Array.from({ length: daysInMonth }).map((_, index) => {
+    const dayNum = index + 1;
+    const date = new Date(Date.UTC(year, monthIndex, dayNum));
+    const isBestWindow = isDateBetweenUTC(date, bestStart, bestEnd);
+    const isBestStart = isSameUtcDate(date, bestStart);
+    const isBestEnd = isSameUtcDate(date, bestEnd);
+    const alt = altRanges.find(a => isDateBetweenUTC(date, a.start, a.end));
+
+    const classes = [
+      'lt-month-day',
+      isBestWindow ? 'best-window' : '',
+      isBestStart ? 'best-start' : '',
+      isBestEnd ? 'best-end' : '',
+      alt && !isBestWindow ? 'alt-window' : ''
+    ].filter(Boolean).join(' ');
+
+    const label = isBestStart
+      ? '<span class="lt-sprout-pulse">🌱</span>'
+      : alt && !isBestWindow
+        ? '<span class="lt-alt-dot"></span>'
+        : '';
+
+    return `<div class="${classes}"><span>${dayNum}</span>${label}</div>`;
+  });
+
+  return `
+    <div class="lt-actual-calendar" style="--score-color:${color}; --score-width:${item.score}%">
+      <div class="lt-calendar-topbar">
+        <div>
+          <div class="lt-calendar-eyebrow">Projected best planting calendar</div>
+          <h3>${monthName} ${year}</h3>
+          <p>Highlighted days show PAL-AI's best planting week: <strong>${item.weekRangeFull}</strong>.</p>
+        </div>
+        <div class="lt-calendar-score-ring">
+          <span>${item.score}%</span>
+          <small>${item.risk}</small>
+        </div>
+      </div>
+
+      <div class="lt-week-window-banner">
+        <div>
+          <span>Best window</span>
+          <strong>Week ${item.bestWeek} · ${item.weekRangeFull}</strong>
+        </div>
+        <div class="lt-mini-score-bar"><span></span></div>
+      </div>
+
+      <div class="lt-month-weekdays">
+        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+      </div>
+
+      <div class="lt-month-grid">
+        ${[...blankCells, ...dayCells].join('')}
+      </div>
+
+      <div class="lt-calendar-legend">
+        <span><i class="best"></i> Best planting week</span>
+        <span><i class="alt"></i> Alternative windows</span>
+        <span><i class="pulse"></i> Start day</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderLongTermCalendarBoard(results, selectedYear = null) {
+  const board = document.getElementById('longterm-calendar-board');
+  if (!board || !results.length) return;
+
+  const selected = results.find(r => Number(r.year) === Number(selectedYear)) ||
+    [...results].sort((a, b) => b.score - a.score)[0];
+
+  const yearButtons = results.map(item => {
+    const color = getLongTermScoreColor(item.score);
+    return `
+      <button class="lt-year-chip ${Number(item.year) === Number(selected.year) ? 'active' : ''}"
+        onclick="focusLongTermYear(${item.year})"
+        style="--score-color:${color}; --score-width:${item.score}%">
+        <strong>${item.year}</strong>
+        <span>${item.score}%</span>
+      </button>
+    `;
+  }).join('');
+
+  board.innerHTML = `
+    <div class="lt-calendar-year-rail">
+      <div class="lt-rail-title">Select forecast year</div>
+      <div class="lt-year-chip-scroll">${yearButtons}</div>
+    </div>
+    ${buildActualPlantingCalendar(selected)}
+  `;
+}
+
+function renderLongTermPlantingChart(results) {
+  const canvas = document.getElementById('longtermPlantingChart');
+  if (!canvas) return;
+
+  if (longTermPlantingChart) {
+    longTermPlantingChart.destroy();
+  }
+
+  longTermPlantingChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: results.map(r => r.year),
+      datasets: [
+        {
+          label: 'Best Planting Week',
+          data: results.map(r => r.bestWeek),
+          borderColor: '#84cc16',
+          backgroundColor: 'rgba(132,204,22,.10)',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.25,
+          fill: true
+        },
+        {
+          label: 'Compatibility Score',
+          data: results.map(r => r.score),
+          borderColor: '#0ea5e9',
+          backgroundColor: 'rgba(14,165,233,.08)',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.25,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            afterBody: (items) => {
+              const index = items[0]?.dataIndex;
+              const row = results[index];
+              return row ? `Actual window: ${row.weekRangeFull}` : '';
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          title: { display: true, text: 'Best Week Number' },
+          min: 1,
+          max: 52
+        },
+        y1: {
+          title: { display: true, text: 'Compatibility Score (%)' },
+          min: 0,
+          max: 100,
+          position: 'right',
+          grid: { drawOnChartArea: false }
+        }
+      }
+    }
+  });
+}
+
+function renderLongTermPlantingTable(results) {
+  const body = document.getElementById('longterm-table-body');
+  if (!body) return;
+
+  body.innerHTML = results.map(r => {
+    const color = getLongTermScoreColor(r.score);
+
+    return `
+      <tr onclick="focusLongTermYear(${r.year})">
+        <td><strong>${r.year}</strong></td>
+        <td><span class="lt-week-chip">Week ${r.bestWeek}</span></td>
+        <td>${r.weekRangeFull}</td>
+        <td>${r.month}</td>
+        <td>
+          <div class="lt-score-bar" style="--score-color:${color}; --score-width:${r.score}%">
+            <span></span>
+            <strong>${r.score}%</strong>
+          </div>
+        </td>
+        <td><span class="lt-risk-badge" style="--score-color:${color}">${r.risk}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function focusLongTermYear(year) {
+  const item = longTermPlantingData.find(r => Number(r.year) === Number(year));
+  if (!item) return;
+
+  const focusYear = document.getElementById('lt-focus-year');
+  const focusWeek = document.getElementById('lt-focus-week');
+  const focusAdvice = document.getElementById('lt-focus-advice');
+
+  if (focusYear) focusYear.textContent = item.year;
+  if (focusWeek) focusWeek.textContent = `Week ${item.bestWeek} · ${item.weekRangeFull}`;
+  if (focusAdvice) {
+    focusAdvice.textContent =
+      `${item.risk} planting compatibility at ${item.score}%. Alternative windows: ${item.alternatives.map(w => `Week ${w.week} (${w.weekRange}, ${w.score}%)`).join(', ')}.`;
+  }
+
+  renderLongTermCalendarBoard(longTermPlantingData, item.year);
+}
+
+
+// ════════════════════════════════════════
+// FORECAST SUBTABS + LIVE PLANTING FORECAST
+// ════════════════════════════════════════
+
+function switchForecastSubtab(subtab, shouldSwitchMainTab = true) {
+  if (shouldSwitchMainTab) {
+    suppressNarrationOnce = true;
+    switchTab('forecast');
+    suppressNarrationOnce = false;
+  }
+
+  currentAnalysisSubtabs.forecast = subtab;
+  if (!suppressNarrationOnce) {
+    const forecastVoiceMap = {
+      yield: "forecast-yield",
+      live: "forecast-live",
+      longterm: "forecast-longterm",
+    };
+
+    playVoiceLine(forecastVoiceMap[subtab], { force: true });
+  }
+
+  const yieldPanel = document.getElementById('forecast-yield-panel');
+  const livePanel = document.getElementById('forecast-live-panel');
+  const longtermPanel = document.getElementById('forecast-longterm-panel');
+
+  const showYield = subtab === 'yield';
+  const showLive = subtab === 'live';
+  const showLongTerm = subtab === 'longterm';
+
+  if (yieldPanel) {
+    yieldPanel.classList.toggle('subsection-hidden', !showYield);
+    yieldPanel.style.display = showYield ? '' : 'none';
+  }
+
+  if (livePanel) {
+    livePanel.classList.toggle('subsection-hidden', !showLive);
+    livePanel.style.display = showLive ? '' : 'none';
+  }
+
+  if (longtermPanel) {
+    longtermPanel.classList.toggle('subsection-hidden', !showLongTerm);
+    longtermPanel.style.display = showLongTerm ? '' : 'none';
+  }
+
+  document.querySelectorAll('[data-forecast-subtab]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.forecastSubtab === subtab);
+  });
+
+  if (showYield) {
+    setTimeout(() => {
+      if (!forecastMap) initForecastMap();
+      if (forecastMap) forecastMap.invalidateSize();
+    }, 180);
+  }
+
+  if (showLongTerm && forecastData && !longTermPlantingData.length) {
+    generateLongTermPlantingWindows();
+  }
+}
+
+function getForecastLatLngForLiveWeather() {
+  if (lastForecastLat && lastForecastLng) {
+    return {
+      lat: lastForecastLat,
+      lng: lastForecastLng
+    };
+  }
+
+  if (forecastMarker && forecastMarker.getLatLng) {
+    const pos = forecastMarker.getLatLng();
+
+    return {
+      lat: pos.lat,
+      lng: pos.lng
+    };
+  }
+
+  const regionId = document.getElementById('region-select')?.value;
+
+  if (regionId && REGION_COORDS[regionId]) {
+    return {
+      lat: REGION_COORDS[regionId][0],
+      lng: REGION_COORDS[regionId][1]
+    };
+  }
+
+  return null;
+}
+
+function showLiveForecastStatus(message, type = 'loading') {
+  const el = document.getElementById('live-forecast-status');
+  if (!el) return;
+
+  el.textContent = message;
+  el.className = `live-forecast-status ${type}`;
+  el.classList.remove('hidden');
+}
+
+async function runLivePlantingForecast(options = {}) {
+  const silent = options.silent === true;
+  const location = getForecastLatLngForLiveWeather();
+
+  if (!location) {
+    if (!silent) {
+      showLiveForecastStatus('Please select a region or set the map pin first in the Yield Forecast sub-tab.', 'error');
+    }
+    return;
+  }
+
+  if (!silent) {
+    showLiveForecastStatus('Fetching live weather data from Google Weather API...', 'loading');
+  } else {
+    showLiveForecastStatus('Preparing live planting forecast in the background...', 'loading');
+  }
+
+  const grid = document.getElementById('planting-calendar-grid');
+  const summary = document.getElementById('live-forecast-summary');
+
+  if (summary) summary.classList.add('hidden');
+
+  if (grid) {
+    grid.innerHTML = `
+      <div class="planting-empty-state">
+        <div class="planting-empty-icon">🌦️</div>
+        <h3>Loading live planting calendar...</h3>
+        <p>PAL-AI is converting weather factors into daily planting compatibility scores.</p>
+      </div>
+    `;
+  }
+
+  try {
+    const res = await fetch(`${API}/api/live-planting-forecast?lat=${location.lat}&lng=${location.lng}&days=10`);
+    const data = await res.json();
+
+    if (!data.ok) {
+      throw new Error(data.error || 'Live planting forecast failed.');
+    }
+
+    renderLivePlantingForecast(data);
+    showLiveForecastStatus(`Live planting forecast generated for ${data.returned_days} days.`, 'success');
+
+  } catch (err) {
+    console.error(err);
+    showLiveForecastStatus(`Live forecast failed: ${err.message}`, 'error');
+  }
+}
+
+function getPlantingScoreColor(score) {
+  if (score >= 85) return '#16a34a';
+  if (score >= 70) return '#84cc16';
+  if (score >= 55) return '#eab308';
+  if (score >= 40) return '#f97316';
+  return '#dc2626';
+}
+
+function renderLivePlantingForecast(data) {
+  const grid = document.getElementById('planting-calendar-grid');
+  if (!grid) return;
+
+  const days = data.days || [];
+
+  if (!days.length) {
+    grid.innerHTML = `
+      <div class="planting-empty-state">
+        <div class="planting-empty-icon">⚠️</div>
+        <h3>No forecast days returned</h3>
+        <p>Google Weather API did not return daily forecast data for this location.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const best = [...days].sort((a, b) => b.score - a.score)[0];
+  const avgScore = days.reduce((sum, d) => sum + d.score, 0) / days.length;
+
+  const bestDate = new Date(best.date);
+
+  document.getElementById('live-best-day').textContent = bestDate.toLocaleDateString('en-PH', {
+    month: 'short',
+    day: 'numeric'
+  });
+
+  document.getElementById('live-best-score').textContent = `${best.score}%`;
+  document.getElementById('live-avg-score').textContent = `${avgScore.toFixed(1)}%`;
+
+  const summary = document.getElementById('live-forecast-summary');
+  if (summary) summary.classList.remove('hidden');
+
+  const firstDate = new Date(days[0].date);
+  const firstWeekDay = firstDate.getDay();
+
+  const blanks = Array.from({ length: firstWeekDay }).map(() => {
+    return `<div class="planting-day-card" style="background:#f8fafc"></div>`;
+  }).join('');
+
+  const cards = days.map((day, i) => {
+    const date = new Date(day.date);
+    const color = getPlantingScoreColor(day.score);
+    const isBest = day.date === best.date;
+
+    const dateLabel = date.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric'
+    });
+
+    const dayName = date.toLocaleDateString('en-PH', {
+      weekday: 'short'
+    });
+
+    return `
+      <div class="planting-day-card ${isBest ? 'best-day' : ''}" style="--score-color:${color}; animation-delay:${i * 0.035}s">
+        <div class="planting-day-top">
+          <div>
+            <div class="planting-date">${dateLabel}</div>
+            <div class="planting-day-name">${dayName}</div>
+          </div>
+          ${day.icon ? `<img src="${day.icon}" alt="${day.condition}" width="34" height="34">` : ''}
+        </div>
+
+        <div class="planting-score-pill">${day.score}% · ${day.label}</div>
+
+        <div class="planting-weather-row">
+          <div><span>Condition:</span> ${day.condition}</div>
+          <div><span>Temp:</span> ${day.min_temp_c ?? '—'}–${day.max_temp_c ?? '—'}°C</div>
+          <div><span>Rain:</span> ${day.rainfall_mm} mm · ${day.precipitation_probability}%</div>
+          <div><span>Humidity:</span> ${day.humidity ?? '—'}%</div>
+          <div><span>Dew Point:</span> ${day.dew_point_c ?? '—'}°C</div>
+          <div><span>Wind:</span> ${day.wind_kph ?? '—'} km/h</div>
+        </div>
+
+        <div class="planting-advice">${day.advice}</div>
+      </div>
+    `;
+  }).join('');
+
+  grid.innerHTML = blanks + cards;
 }
 
 // ════════════════════════════════════════
@@ -728,9 +2268,29 @@ async function runForecast() {
   try {
     const res = await fetch(`${API}/api/forecast/${regionId}`);
     if (!res.ok) throw new Error(`API error: ${res.status}`);
+
     const data = await res.json();
     forecastData = data;
+
+    // Reset old long-term data so new location/region generates fresh results.
+    longTermPlantingData = [];
+
+    // 1. Generate normal Yield Forecast.
     renderResults(data, province, municipality, barangay, hectares, cropType);
+
+    // 2. Generate Long-Term Planting Windows immediately.
+    try {
+      generateLongTermPlantingWindows();
+    } catch (ltErr) {
+      console.warn('Long-term planting window generation failed:', ltErr);
+    }
+
+    // 3. Generate 10-Day Live Planting Forecast in the background.
+    // This does not switch tabs. It prepares the 10-day calendar automatically.
+    runLivePlantingForecast({ silent: true }).catch(liveErr => {
+      console.warn('Live planting forecast background run failed:', liveErr);
+    });
+
   } catch (e) {
     alert(`Error fetching forecast: ${e.message}\n\nMake sure the backend is running:\nuvicorn main:app --reload`);
   } finally {
@@ -774,7 +2334,10 @@ function renderResults(data, province, municipality, barangay, hectares, cropTyp
   drawClimateChart(data, 'temperature');
 
   document.getElementById('results-section').classList.remove('hidden');
-  document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  if ((currentAnalysisSubtabs.forecast || 'yield') === 'yield') {
+    document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 // ════════════════════════════════════════
@@ -1815,7 +3378,13 @@ async function startWaterBodyAnalyzer(lat, lng, gridKm) {
       waterAnalyzerAbortController.signal
     );
 
-    // No runId check — just render whatever came back
+    // No runId check — just render whatever came back.
+    // Also pass the mapped water features into the 3D terrain engine so rivers/lakes/coasts
+    // can be shown as a visual water overlay. This is not measured bathymetry.
+    if (typeof Terrain !== 'undefined' && typeof Terrain.setWaterFeatures === 'function') {
+      Terrain.setWaterFeatures(waterBodies);
+    }
+
     drawWaterBodiesOnCanvas(waterBodies, lat, lng, gridKm);
     renderDetectedWaterBodies(waterBodies, lat, lng, gridKm);
 
@@ -1848,6 +3417,7 @@ async function runTerrainAnalysis() {
   const lng = parseFloat(document.getElementById('terrain-lng').value);
   const gridKm = parseInt(document.getElementById('terrain-grid').value) || 5;
   const mode = document.getElementById('terrain-mode').value;
+  let terrainAnalysisCompletedForVoice = false;
 
   if (isNaN(lat) || isNaN(lng)) {
     showTerrainStatus('⚠️ Please enter valid latitude and longitude coordinates.', 'error');
@@ -1865,7 +3435,17 @@ async function runTerrainAnalysis() {
   showLoading("Generating 3D Terrain");
   showTerrainStatus('⏳ Fetching elevation data and building 3D model...', 'loading');
 
-  document.getElementById('terrain-scores').classList.add('hidden');
+  const terrainScoresStart = document.getElementById('terrain-scores');
+  if (terrainScoresStart) {
+    terrainScoresStart.classList.add('hidden');
+  }
+
+  const fertilizerStart = document.getElementById('fertilizer-analysis-section');
+  if (fertilizerStart) {
+    fertilizerStart.classList.add('hidden');
+  }
+
+  latestFertilizerAnalysis = null;
 
   // Show the analyzer panel immediately, but do not start the heavy OSM scan yet.
   prepareWaterBodyAnalyzer(lat, lng, gridKm);
@@ -1884,8 +3464,9 @@ async function runTerrainAnalysis() {
     }, 120);
 
     updateTerrainMiniMap(lat, lng, gridKm);
+    const terrainSourceText = terrainResult.sourceLabel || (terrainResult.usedAPI ? 'Real SRTM DEM' : 'Synthetic fallback terrain');
     showTerrainStatus(
-      `✅ 3D terrain loaded ${terrainResult.usedAPI ? '(SRTM elevation data)' : '(fallback terrain model)'}`,
+      `✅ 3D terrain loaded — ${terrainSourceText}. Elevation range: ${Math.round(terrainResult.maxE - terrainResult.minE)}m.`,
       'success'
     );
 
@@ -1921,11 +3502,14 @@ async function runTerrainAnalysis() {
     const crossSection = Terrain.getCrossSection();
     drawTerrainProfile(crossSection, gridKm);
 
+    switchAnalysisSubtab('terrain', currentAnalysisSubtabs.terrain || 'terrain-3d', false);
+
     // ── Spatiotemporal Analysis ──
     // Runs after terrain scores so it can read and augment them
     if (currentRegionId) {
       runSpatiotemporalAnalysis(currentRegionId, scores);
     }
+    terrainAnalysisCompletedForVoice = true;
 
   } catch (e) {
     const msg = String(e && e.message ? e.message : e);
@@ -1943,6 +3527,11 @@ async function runTerrainAnalysis() {
 
     btn.disabled = false;
     btn.innerHTML = '🗺️ Generate 3D Terrain';
+    if (terrainAnalysisCompletedForVoice) {
+      setTimeout(() => {
+        playVoiceLine("terrain-3d-complete", { force: true });
+      }, 450);
+    }
   }
 }
 
@@ -1955,6 +3544,15 @@ function showTerrainStatus(msg, type) {
 
 function renderTerrainScores(scores, lat, lng, gridKm) {
   const { topoScore, yieldImpactScore, overallModifier, details } = scores;
+
+  const terrainScoresSection = document.getElementById('terrain-scores');
+  if (terrainScoresSection) {
+    terrainScoresSection.classList.remove('hidden');
+
+    if ((currentAnalysisSubtabs.terrain || 'terrain-3d') === 'terrain-3d') {
+      terrainScoresSection.classList.remove('subsection-hidden');
+    }
+  }
 
   // Animate score rings
   animateRing('topo-ring-fill', topoScore, '#84cc16');
@@ -1991,6 +3589,9 @@ function renderTerrainScores(scores, lat, lng, gridKm) {
     ['Max Elevation', Math.round(elevation.maxE) + ' m'],
     ['Avg Elevation', Math.round(elevation.avgE) + ' m'],
     ['Elevation Range', Math.round(elevation.elevRange) + ' m'],
+    ['DEM Source', elevation.demSourceLabel || '—'],
+    ['Real DEM Coverage', `${Number(elevation.demCoveragePct || 0).toFixed(0)}%`],
+    ['Fallback-Filled Points', String(elevation.fallbackFilledCount || 0)],
     ['Elevation Score', elevation.elevScore.toFixed(0) + '%'],
   ]);
 
@@ -2167,6 +3768,10 @@ async function runSpatiotemporalAnalysis(regionId, terrainScores) {
 
   section.classList.remove('hidden');
 
+  if ((currentAnalysisSubtabs.terrain || 'terrain-3d') === 'terrain-3d') {
+    section.classList.remove('subsection-hidden');
+  }
+
   // Show loading state in the badge
   const badge = document.getElementById('spatio-adj-val');
   if (badge) badge.textContent = '...';
@@ -2183,6 +3788,104 @@ async function runSpatiotemporalAnalysis(regionId, terrainScores) {
   } catch (e) {
     console.error('Spatiotemporal analysis failed:', e);
     if (badge) badge.textContent = 'N/A';
+  }
+}
+
+function renderSpatioDecisionText(data, terrainScores) {
+  const preNdvi = Number(data.pre_monsoon_ndvi || 0);
+  const postNdvi = Number(data.post_monsoon_ndvi || 0);
+  const delta = postNdvi - preNdvi;
+
+  const heatIndex = Number(data.heat_stress_index || 0);
+  const stabilityPct = Math.round(Number(data.stability_score || 0) * 100);
+  const irrigationPct = Math.round(Number(data.irrigation_dependency || 0) * 100);
+  const yieldAdj = Number(data.yield_adjustment_pct || 0);
+
+  let mainStress = "No major stress";
+  let stressNote = "Farm condition appears balanced.";
+
+  if (heatIndex >= 0.65) {
+    mainStress = "Heat Stress";
+    stressNote = "High heat stress may reduce crop comfort and water efficiency.";
+  } else if (irrigationPct >= 65) {
+    mainStress = "Rainfall Dependence";
+    stressNote = "The area may rely strongly on rainfall or irrigation timing.";
+  } else if (stabilityPct < 60) {
+    mainStress = "Low Stability";
+    stressNote = "Vegetation proxy stability is weaker than ideal.";
+  } else if (delta < -0.03) {
+    mainStress = "Seasonal Decline";
+    stressNote = "Post-monsoon condition is weaker than pre-monsoon.";
+  }
+
+  const bestSeason = postNdvi >= preNdvi ? "Post-Monsoon" : "Pre-Monsoon";
+  const bestSeasonNote = postNdvi >= preNdvi
+    ? "Post-monsoon values show stronger vegetation proxy conditions."
+    : "Pre-monsoon values currently appear more favorable.";
+
+  const trendNote = delta >= 0
+    ? `Seasonal condition improves by ${delta.toFixed(3)} from pre- to post-monsoon.`
+    : `Seasonal condition declines by ${Math.abs(delta).toFixed(3)} from pre- to post-monsoon.`;
+
+  const healthLabel =
+    stabilityPct >= 80 ? "Excellent stability" :
+      stabilityPct >= 65 ? "Good stability" :
+        stabilityPct >= 50 ? "Moderate stability" :
+          "Weak stability";
+
+  setText("st-health-label", healthLabel);
+  setText("st-trend-note", trendNote);
+  setText("st-main-stress", mainStress);
+  setText("st-main-stress-note", stressNote);
+  setText("st-season", bestSeason);
+  setText("st-season-note", bestSeasonNote);
+
+  const interp = document.getElementById("spatio-ai-interpretation");
+  if (interp) {
+    const direction = yieldAdj >= 0 ? "positive" : "negative";
+    interp.textContent =
+      `The selected farm area shows ${healthLabel.toLowerCase()} with ${data.trend_direction}. ` +
+      `${bestSeason} appears more suitable based on seasonal vegetation proxy values. ` +
+      `The main limiting factor is ${mainStress.toLowerCase()}, producing a ${direction} yield adjustment of ${yieldAdj >= 0 ? "+" : ""}${yieldAdj.toFixed(1)}%.`;
+  }
+
+  const actionList = document.getElementById("spatio-action-list");
+  if (actionList) {
+    let actions = [];
+
+    if (mainStress === "Heat Stress") {
+      actions = [
+        "Increase irrigation monitoring during hot periods.",
+        "Avoid planting during extreme heat windows.",
+        "Prioritize moisture retention and field water management."
+      ];
+    } else if (mainStress === "Rainfall Dependence") {
+      actions = [
+        "Check irrigation access before planting.",
+        "Use rainfall forecast before scheduling field preparation.",
+        "Monitor drainage after heavy rainfall."
+      ];
+    } else if (mainStress === "Low Stability") {
+      actions = [
+        "Review soil fertility and water consistency.",
+        "Use fertilizer recommendation results before application.",
+        "Monitor field condition between seasons."
+      ];
+    } else if (mainStress === "Seasonal Decline") {
+      actions = [
+        "Compare planting timing between pre- and post-monsoon seasons.",
+        "Check if excess rainfall or drainage is affecting suitability.",
+        "Use terrain and water-body analysis to confirm field limitations."
+      ];
+    } else {
+      actions = [
+        "Maintain current field management practices.",
+        "Use forecast and pest-risk modules for timing decisions.",
+        "Continue monitoring water and fertilizer compatibility."
+      ];
+    }
+
+    actionList.innerHTML = actions.map(action => `<span>${action}</span>`).join("");
   }
 }
 
@@ -2375,6 +4078,7 @@ function renderSpatioSection(data, terrainScores) {
 
   // ── Final Score Banner ────────────────────────────────────────────────────
   renderFinalBanner(data, terrainScores);
+  renderSpatioDecisionText(data, terrainScores);
 
   // Scroll to section
   setTimeout(() => {
@@ -2386,10 +4090,15 @@ function renderSpatioSection(data, terrainScores) {
 function drawSpatioPanel(canvas, centralValue, type, data) {
   // Simulate a spatial raster using the annual_series + seasonal_profile
   // to create a plausible false-color gradient map
-  const W = canvas.offsetWidth || 320;
-  const H = Math.round(W / 1.6) || 200;
+  const displaySize = Math.min(canvas.offsetWidth || 320, 360);
+  const W = displaySize;
+  const H = displaySize;
+
   canvas.width = W;
   canvas.height = H;
+  canvas.style.width = `${displaySize}px`;
+  canvas.style.height = `${displaySize}px`;
+
   const ctx = canvas.getContext('2d');
 
   const COLS = 48, ROWS = 30;
@@ -2719,6 +4428,7 @@ async function runPestRiskAnalysis() {
   const lng = document.getElementById('pest-lng')?.value ? parseFloat(document.getElementById('pest-lng').value) : null;
   const terrain = document.getElementById('pest-terrain-score')?.value ? parseFloat(document.getElementById('pest-terrain-score').value) : null;
   const water = document.getElementById('pest-water-score')?.value ? parseFloat(document.getElementById('pest-water-score').value) : null;
+  let pestAnalysisCompletedForVoice = false;
 
   // Validation
   const errEl = document.getElementById('pest-error');
@@ -2766,6 +4476,7 @@ async function runPestRiskAnalysis() {
     const data = await res.json();
     pestRiskData = data;
     renderPestRiskResults(data);
+    pestAnalysisCompletedForVoice = true;
   } catch (e) {
     showPestMsg(`❌ Analysis failed: ${e.message}`);
     document.getElementById('pest-results').classList.add('hidden');
@@ -2774,6 +4485,11 @@ async function runPestRiskAnalysis() {
 
     btn.disabled = false;
     btn.innerHTML = '<span class="btn-icon">🦗</span> Analyze Pest Outbreak Risk';
+    if (pestAnalysisCompletedForVoice) {
+      setTimeout(() => {
+        playVoiceLine("pest-outbreak-complete", { force: true });
+      }, 450);
+    }
   }
 }
 
@@ -3299,6 +5015,9 @@ function renderPestRiskResults(data) {
   // Minimap of the heatmap
   updatePestRiskMiniMap(data);
 
+  // Re-apply selected pest sub-tab after all results are rendered.
+  applyPestSubtabVisibility(currentAnalysisSubtabs.pest || 'pest-outbreak');
+
   // Scroll to results
   resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -3813,15 +5532,20 @@ function redrawSpatioCanvasesOnly() {
   if (!data) return;
 
   const panels = [
-    { id: 'spCanvas-ndvi-pre', value: data.pre_monsoon_ndvi, type: 'ndvi' },
-    { id: 'spCanvas-ndvi-post', value: data.post_monsoon_ndvi, type: 'ndvi' },
-    { id: 'spCanvas-evi', value: data.post_monsoon_evi, type: 'ndvi' },
-    { id: 'spCanvas-lst-pre', value: data.pre_monsoon_lst, type: 'lst' },
-    { id: 'spCanvas-lst-post', value: data.post_monsoon_lst, type: 'lst' },
+    {
+      id: 'spCanvas-ndvi-post',
+      value: data.post_monsoon_ndvi,
+      type: 'ndvi'
+    },
     {
       id: 'spCanvas-delta',
       value: data.post_monsoon_ndvi - data.pre_monsoon_ndvi,
       type: 'delta'
+    },
+    {
+      id: 'spCanvas-lst-pre',
+      value: data.pre_monsoon_lst,
+      type: 'lst'
     }
   ];
 
@@ -5152,7 +6876,7 @@ function fertilizerEmojiFallback(name) {
 }
 
 function resolveFertilizerImageUrl(fert) {
-  return `assets/fertilizers/${fert.image}`;
+  return `/static/assets/fertilizers/${fert.image}`;
 }
 
 function calculateFertilizerCompatibility(scores, lat, lng, gridKm) {
@@ -5254,6 +6978,14 @@ function calculateFertilizerCompatibility(scores, lat, lng, gridKm) {
 function renderFertilizerAnalysis(data) {
   const section = document.getElementById('fertilizer-analysis-section');
   if (!section) return;
+
+  section.classList.remove('hidden');
+
+  if ((currentAnalysisSubtabs.terrain || 'terrain-3d') === 'terrain-fertilizer') {
+    section.classList.remove('subsection-hidden');
+  }
+
+  latestFertilizerAnalysis = data;
 
   // Badge / header
   const bestNameEl = document.getElementById('fertilizer-best-name');

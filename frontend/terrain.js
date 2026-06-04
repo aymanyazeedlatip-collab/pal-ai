@@ -2,6 +2,10 @@
 // Uses Three.js for 3D rendering + OpenTopoData API for elevation
 
 const Terrain = (() => {
+  const TERRAIN_API =
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:8000'
+      : 'https://pal-ai-1.onrender.com';
   let scene, camera, renderer, controls, mesh, wireframeMesh;
   let resizeHandler = null;
   let animationId = null;
@@ -12,14 +16,17 @@ const Terrain = (() => {
   let profileChart = null;
   let currentMode = 'suitability';
   let isRendererPaused = false;
+  let waterOverlayFeatures = [];
+  let waterOverlayRevision = 0;
 
-  const GRID_RESOLUTION = 60;
+  const GRID_RESOLUTION = 45;
   const TERRAIN_SIZE = 18;
 
-  // Realistic vertical scaling.
-  // Lower values = flatter and more realistic.
-  const EXAGGERATION = 2.2;
-  const BASE_EXAGGERATION = 0.7;
+  // Adaptive vertical scaling.
+  // BASE_EXAGGERATION is now stronger so hills/mountains are visible by default,
+  // while EXAGGERATION remains available as an amplified inspection mode.
+  const EXAGGERATION = 0.8;
+  const BASE_EXAGGERATION = 0.5;
 
   let currentExaggeration = BASE_EXAGGERATION;
 
@@ -74,24 +81,27 @@ const Terrain = (() => {
     return map[map.length - 1];
   }
 
-  // ── Generate synthetic DEM using Perlin-like noise ──
-  // Falls back to this if API unavailable
+  // ── Generate synthetic DEM using multi-octave, coordinate-seeded relief ──
+  // This is not real DEM. It is used only as a last-resort visual backup when
+  // OpenTopoData/SRTM does not return usable elevation values.
   function syntheticElevation(lat, lng, gridX, gridY, gridSize) {
-    // Use lat/lng as seed for "realistic" variation
-    const seed = (lat * 73856093) ^ (lng * 19349663);
+    const seed = Math.sin(lat * 12.9898 + lng * 78.233) * 43758.5453;
     const rng = (n) => Math.abs(Math.sin(n * 12.9898 + seed * 78.233) * 43758.5453) % 1;
 
     const nx = gridX / GRID_RESOLUTION;
     const ny = gridY / GRID_RESOLUTION;
 
-    // Multi-octave noise simulation
     let elev = 0;
-    let amp = 1; let freq = 1; let maxAmp = 0;
-    for (let o = 0; o < 5; o++) {
-      const ix = Math.floor(nx * freq * 8);
-      const iy = Math.floor(ny * freq * 8);
-      const fx = nx * freq * 8 - ix;
-      const fy = ny * freq * 8 - iy;
+    let amp = 1;
+    let freq = 1;
+    let maxAmp = 0;
+
+    for (let o = 0; o < 6; o++) {
+      const ix = Math.floor(nx * freq * 7);
+      const iy = Math.floor(ny * freq * 7);
+      const fx = nx * freq * 7 - ix;
+      const fy = ny * freq * 7 - iy;
+
       const n00 = rng(ix + iy * 137 + o * 1000);
       const n10 = rng(ix + 1 + iy * 137 + o * 1000);
       const n01 = rng(ix + (iy + 1) * 137 + o * 1000);
@@ -99,17 +109,63 @@ const Terrain = (() => {
       const bx = fx * fx * (3 - 2 * fx);
       const by = fy * fy * (3 - 2 * fy);
       const n = n00 + (n10 - n00) * bx + (n01 - n00) * by + (n00 - n10 - n01 + n11) * bx * by;
+
       elev += n * amp;
-      maxAmp += amp; amp *= 0.5; freq *= 2.2;
+      maxAmp += amp;
+      amp *= 0.52;
+      freq *= 2.15;
     }
+
     elev = elev / maxAmp;
 
-    // Scale based on typical Philippine elevation patterns
-    const isCoastal = (lat < 8.5 && lat > 7.5) || (gridX < 3 || gridX > GRID_RESOLUTION - 3);
-    // Much flatter fallback terrain.
-    // This should only be used when real DEM data is unavailable.
-    const baseMult = isCoastal ? 18 : 55;
-    return Math.max(0, elev * baseMult + (rng(lat * 100) * 5));
+    // Add broader ridge/valley structure so fallback terrain does not look identical everywhere.
+    const ridgeA = Math.pow(Math.abs(Math.sin((nx * 2.6 + lat * 0.09) * Math.PI)), 1.8);
+    const ridgeB = Math.pow(Math.abs(Math.cos((ny * 2.2 + lng * 0.07) * Math.PI)), 2.1);
+    const ridge = ridgeA * 0.55 + ridgeB * 0.45;
+
+    // Deterministic location relief. This does not claim real topography; it only prevents
+    // a fully flat backup model when real DEM is unavailable.
+    const locationRelief = 65 + Math.abs(Math.sin(lat * 0.61 + lng * 0.37)) * 155;
+    const localBase = Math.abs(Math.sin(lat * 1.19 - lng * 0.23)) * 110;
+    const relief = (elev * 0.62 + ridge * 0.38) * locationRelief;
+
+    return Math.max(0, localBase + relief + rng(lat * 100 + lng * 10) * 8);
+  }
+
+  function averageNeighborElevation(elevGrid, gx, gy, maxRadius = 6) {
+    const N = GRID_RESOLUTION + 1;
+
+    for (let radius = 1; radius <= maxRadius; radius++) {
+      let sum = 0;
+      let count = 0;
+
+      for (let yy = gy - radius; yy <= gy + radius; yy++) {
+        for (let xx = gx - radius; xx <= gx + radius; xx++) {
+          if (yy < 0 || yy >= N || xx < 0 || xx >= N) continue;
+          const idx = yy * N + xx;
+          const v = elevGrid[idx];
+
+          if (Number.isFinite(v)) {
+            const dist = Math.hypot(xx - gx, yy - gy) || 1;
+            const weight = 1 / dist;
+            sum += v * weight;
+            count += weight;
+          }
+        }
+      }
+
+      if (count > 0) return sum / count;
+    }
+
+    return null;
+  }
+
+  function demSourceLabel(meta) {
+    const coverage = Number(meta?.demCoveragePct || 0);
+
+    if (coverage >= 95) return `Real SRTM DEM (${coverage.toFixed(0)}% coverage)`;
+    if (coverage > 0) return `Partial SRTM DEM + interpolated fallback (${coverage.toFixed(0)}% real coverage)`;
+    return 'Synthetic fallback terrain only';
   }
 
   // ── Fetch DEM from OpenTopoData (or fall back to synthetic) ──
@@ -127,9 +183,17 @@ const Terrain = (() => {
       }
     }
 
-    // Try fetching real DEM in batches of 100
     const elevGrid = new Array((GRID_RESOLUTION + 1) * (GRID_RESOLUTION + 1));
-    let usedAPI = false;
+    const realMask = new Array(elevGrid.length).fill(false);
+    let realPointCount = 0;
+
+    console.log('PAL-AI terrain DEM request:', {
+      lat,
+      lng,
+      gridKm,
+      gridResolution: GRID_RESOLUTION,
+      requestedPoints: points.length
+    });
 
     try {
       const BATCH_SIZE = 100;
@@ -141,11 +205,11 @@ const Terrain = (() => {
           .map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
           .join('|');
 
-        const url = `https://api.opentopodata.org/v1/srtm30m?locations=${batch}`;
+        const url = `${TERRAIN_API}/api/elevation-batch?locations=${encodeURIComponent(batch)}`;
 
         const resp = await Promise.race([
           fetch(url),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 25000))
         ]);
 
         if (resp.ok) {
@@ -154,10 +218,13 @@ const Terrain = (() => {
           if (json.results && json.results.length > 0) {
             json.results.forEach((r, i) => {
               const p = batchPoints[i];
+              const value = Number(r?.elevation);
 
-              if (p && r.elevation !== null && r.elevation !== undefined) {
-                elevGrid[p.gy * (GRID_RESOLUTION + 1) + p.gx] = r.elevation;
-                usedAPI = true;
+              if (p && Number.isFinite(value)) {
+                const idx = p.gy * (GRID_RESOLUTION + 1) + p.gx;
+                elevGrid[idx] = value;
+                realMask[idx] = true;
+                realPointCount++;
               }
             });
           }
@@ -167,18 +234,70 @@ const Terrain = (() => {
         await new Promise(resolve => setTimeout(resolve, 60));
       }
     } catch (e) {
-      console.warn("OpenTopoData failed or timed out. Filling missing points with synthetic fallback.", e);
+      console.warn('OpenTopoData failed or timed out. Filling missing points with interpolation/fallback.', e);
     }
 
-    // Fill remaining with synthetic
+    let interpolatedCount = 0;
+    let syntheticCount = 0;
+
     points.forEach(p => {
       const idx = p.gy * (GRID_RESOLUTION + 1) + p.gx;
-      if (elevGrid[idx] === undefined || elevGrid[idx] === null) {
+
+      if (elevGrid[idx] !== undefined && elevGrid[idx] !== null && Number.isFinite(elevGrid[idx])) return;
+
+      const interpolated = realPointCount > 0
+        ? averageNeighborElevation(elevGrid, p.gx, p.gy, 7)
+        : null;
+
+      if (Number.isFinite(interpolated)) {
+        elevGrid[idx] = interpolated;
+        interpolatedCount++;
+      } else {
         elevGrid[idx] = syntheticElevation(lat, lng, p.gx, p.gy, gridKm);
+        syntheticCount++;
       }
     });
 
-    return { elevGrid, usedAPI, step, half, lat, lng };
+    const totalPointCount = points.length;
+    const demCoveragePct = totalPointCount ? (realPointCount / totalPointCount) * 100 : 0;
+    const usedAPI = realPointCount > 0;
+    const sourceMode = demCoveragePct >= 95
+      ? 'real-dem'
+      : demCoveragePct > 0
+        ? 'partial-dem'
+        : 'synthetic-fallback';
+
+    const minE = Math.min(...elevGrid);
+    const maxE = Math.max(...elevGrid);
+
+    console.log('PAL-AI terrain DEM summary:', {
+      sourceMode,
+      realPointCount,
+      totalPointCount,
+      demCoveragePct: demCoveragePct.toFixed(1),
+      interpolatedCount,
+      syntheticCount,
+      minE: Math.round(minE),
+      maxE: Math.round(maxE),
+      rangeE: Math.round(maxE - minE)
+    });
+
+    return {
+      elevGrid,
+      usedAPI,
+      step,
+      half,
+      lat,
+      lng,
+      realPointCount,
+      totalPointCount,
+      demCoveragePct,
+      interpolatedCount,
+      syntheticCount,
+      fallbackFilledCount: interpolatedCount + syntheticCount,
+      sourceMode,
+      sourceLabel: demSourceLabel({ demCoveragePct })
+    };
   }
 
   // ── Compute slope + aspect ──
@@ -438,6 +557,114 @@ const Terrain = (() => {
     window.addEventListener('resize', resizeHandler);
   }
 
+  function normalizeWaterOverlayPoint(point) {
+    if (!point || typeof point !== 'object') return null;
+
+    const lat = Number(point.lat ?? point.latitude);
+    const lon = Number(point.lon ?? point.lng ?? point.longitude);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    return { lat, lon };
+  }
+
+  function sanitizeWaterOverlayGeometry(geometry) {
+    if (!Array.isArray(geometry)) return [];
+    return geometry.map(normalizeWaterOverlayPoint).filter(Boolean);
+  }
+
+  function extractWaterOverlayGeometries(feature) {
+    const geometries = [];
+    const main = sanitizeWaterOverlayGeometry(feature?.geometry);
+    if (main.length >= 2) geometries.push(main);
+
+    if (Array.isArray(feature?.members)) {
+      feature.members.forEach(member => {
+        const memberGeom = sanitizeWaterOverlayGeometry(member?.geometry);
+        if (memberGeom.length >= 2) geometries.push(memberGeom);
+      });
+    }
+
+    return geometries;
+  }
+
+  function waterOverlayIntensity(feature) {
+    const tags = feature?.tags || {};
+    const pointCount = Array.isArray(feature?.geometry) ? feature.geometry.length : 0;
+
+    if (tags.water === 'lake' || tags.natural === 'water' || tags.landuse === 'reservoir') return Math.min(1, 0.72 + pointCount / 260);
+    if (tags.waterway === 'river' || tags.waterway === 'riverbank') return 0.82;
+    if (tags.waterway === 'stream') return 0.46;
+    if (tags.waterway === 'canal' || tags.waterway === 'drain' || tags.waterway === 'ditch') return 0.38;
+    return Math.min(0.72, 0.35 + pointCount / 300);
+  }
+
+  function waterOverlayRadiusKm(feature, gridKm) {
+    const tags = feature?.tags || {};
+    const scale = Math.max(0.65, Math.min(1.35, Number(gridKm || 5) / 5));
+
+    if (tags.water === 'lake' || tags.natural === 'water' || tags.landuse === 'reservoir') return 0.18 * scale;
+    if (tags.waterway === 'river' || tags.waterway === 'riverbank') return 0.12 * scale;
+    if (tags.waterway === 'stream') return 0.07 * scale;
+    if (tags.waterway === 'canal' || tags.waterway === 'drain' || tags.waterway === 'ditch') return 0.06 * scale;
+    return 0.08 * scale;
+  }
+
+  function approxDistanceKm(lat1, lng1, lat2, lng2) {
+    const kmLat = (lat2 - lat1) * 111.32;
+    const midLat = ((lat1 + lat2) / 2) * Math.PI / 180;
+    const kmLng = (lng2 - lng1) * 111.32 * Math.cos(midLat);
+    return Math.hypot(kmLat, kmLng);
+  }
+
+  function buildWaterOverlaySamples() {
+    if (!terrainData || !Array.isArray(waterOverlayFeatures) || !waterOverlayFeatures.length) return [];
+
+    const samples = [];
+    const maxSamples = 850;
+
+    for (const feature of waterOverlayFeatures) {
+      const geometries = extractWaterOverlayGeometries(feature);
+      if (!geometries.length) continue;
+
+      const intensity = waterOverlayIntensity(feature);
+      const radiusKm = waterOverlayRadiusKm(feature, terrainData.gridKm);
+
+      for (const geometry of geometries.slice(0, 24)) {
+        const step = Math.max(1, Math.ceil(geometry.length / 85));
+
+        for (let i = 0; i < geometry.length; i += step) {
+          const point = geometry[i];
+          samples.push({ lat: point.lat, lon: point.lon, intensity, radiusKm });
+          if (samples.length >= maxSamples) return samples;
+        }
+      }
+    }
+
+    return samples;
+  }
+
+  function waterInfluenceAtPoint(pLat, pLng, elevation, minE, rangeE, slope, waterSamples) {
+    let influence = 0;
+
+    // Sea/coastal visual proxy: DEM water surfaces are usually near the lowest elevation,
+    // but this is only a visual planning aid and not measured bathymetry.
+    if (minE <= 3 && elevation <= Math.max(3, minE + Math.max(1.5, rangeE * 0.035)) && slope <= 6) {
+      influence = Math.max(influence, 0.46);
+    }
+
+    for (const sample of waterSamples) {
+      const distance = approxDistanceKm(pLat, pLng, sample.lat, sample.lon);
+      if (distance > sample.radiusKm) continue;
+
+      const t = 1 - (distance / sample.radiusKm);
+      influence = Math.max(influence, t * sample.intensity);
+
+      if (influence >= 0.96) break;
+    }
+
+    return Math.max(0, Math.min(1, influence));
+  }
+
 
   // ── Build terrain geometry ──
   function buildTerrainMesh(elevGrid, slopeGrid, mode) {
@@ -449,57 +676,84 @@ const Terrain = (() => {
     const colors = [];
     const indices = [];
 
-    // Clamp extreme elevation outliers so one bad DEM point does not create huge fake mountains.
-    const sortedElev = [...elevGrid].sort((a, b) => a - b);
-    const p02 = sortedElev[Math.floor(sortedElev.length * 0.02)];
-    const p98 = sortedElev[Math.floor(sortedElev.length * 0.98)];
-
-    const safeElevGrid = elevGrid.map(e => Math.min(Math.max(e, p02), p98));
+    // Clamp extreme elevation outliers so one bad DEM point does not create huge fake spikes.
+    const sortedElev = [...elevGrid].filter(Number.isFinite).sort((a, b) => a - b);
+    const p01 = sortedElev[Math.floor(sortedElev.length * 0.01)] ?? 0;
+    const p99 = sortedElev[Math.floor(sortedElev.length * 0.99)] ?? 1;
+    const safeElevGrid = elevGrid.map(e => Math.min(Math.max(Number(e), p01), p99));
 
     const minE = Math.min(...safeElevGrid);
     const maxE = Math.max(...safeElevGrid);
-    const rangeE = maxE - minE || 1;
+    const rangeE = Math.max(1, maxE - minE);
     const avgE = safeElevGrid.reduce((a, b) => a + b, 0) / safeElevGrid.length;
-
-    // Realistic vertical scale.
-    // Example: 120 meters of elevation difference = 1 Three.js vertical unit.
-    const METERS_PER_VERTICAL_UNIT = 120;
-
     const maxSlope = Math.max(...slopeGrid) || 1;
 
-    // Vertices
+    // Adaptive vertical scale:
+    // - plains remain subtle
+    // - hills become noticeable
+    // - mountains rise visibly without impossible spikes
+    const targetVisualHeight = rangeE < 12
+      ? 1.25
+      : rangeE < 60
+        ? 3.2
+        : rangeE < 250
+          ? 5.8
+          : 8.5;
+
+    const metersPerVerticalUnit = Math.max(4.5, rangeE / targetVisualHeight);
+    const verticalClamp = rangeE < 20 ? 2.4 : rangeE < 120 ? 5.6 : 9.0;
+    const waterSamples = buildWaterOverlaySamples();
+
+    console.log('PAL-AI terrain visual scale:', {
+      mode,
+      minE: Math.round(minE),
+      maxE: Math.round(maxE),
+      rangeE: Math.round(rangeE),
+      avgE: Math.round(avgE),
+      metersPerVerticalUnit: Number(metersPerVerticalUnit.toFixed(2)),
+      currentExaggeration,
+      waterSamples: waterSamples.length
+    });
+
     for (let gy = 0; gy < N; gy++) {
       for (let gx = 0; gx < N; gx++) {
         const idx = gy * N + gx;
-        const e = safeElevGrid ? safeElevGrid[idx] : elevGrid[idx];
+        const e = safeElevGrid[idx];
+        const slope = Number(slopeGrid[idx] || 0);
         const tNorm = (e - minE) / rangeE;
-
-        // Balanced terrain height.
-        // Smaller METERS_PER_VERTICAL_UNIT = more visible hills.
-        // Larger METERS_PER_VERTICAL_UNIT = flatter terrain.
-        const METERS_PER_VERTICAL_UNIT = 45;
-
-        let y = ((e - avgE) / METERS_PER_VERTICAL_UNIT) * currentExaggeration;
-
-        // Prevent extreme spikes but still allow visible relief.
-        y = Math.max(-2.5, Math.min(4.0, y));
 
         const x = (gx / GRID_RESOLUTION - 0.5) * SIZE;
         const z = (gy / GRID_RESOLUTION - 0.5) * SIZE;
 
+        const pLat = terrainData
+          ? terrainData.lat - terrainData.half + gy * terrainData.step
+          : 0;
+        const pLng = terrainData
+          ? terrainData.lng - terrainData.half + gx * terrainData.step
+          : 0;
+
+        let y = ((e - avgE) / metersPerVerticalUnit) * currentExaggeration;
+        y = Math.max(-verticalClamp, Math.min(verticalClamp, y));
+
+        const waterInfluence = terrainData
+          ? waterInfluenceAtPoint(pLat, pLng, e, minE, rangeE, slope, waterSamples)
+          : 0;
+
+        if (waterInfluence > 0.06) {
+          // Visual-only water depression. This does NOT represent measured bathymetry.
+          y -= Math.min(1.05, 0.22 + waterInfluence * 0.92) * currentExaggeration;
+        }
+
         positions.push(x, y, z);
 
-        // Color based on mode
         let t;
         if (mode === 'elevation') {
           t = tNorm;
         } else if (mode === 'slope') {
-          t = Math.min(slopeGrid[idx] / 45, 1);
+          t = Math.min(slope / 45, 1);
         } else if (mode === 'aspect') {
           t = 0.5;
         } else if (mode === 'yield' || mode === 'suitability') {
-          const slope = slopeGrid[idx];
-
           let slopeScore;
           if (slope < 3) slopeScore = 1.0;
           else if (slope < 8) slopeScore = 0.72;
@@ -507,18 +761,27 @@ const Terrain = (() => {
           else slopeScore = 0.12;
 
           const elevationScore = 1 - Math.min(tNorm * 1.25, 1);
-
           t = Math.max(0, Math.min(1, slopeScore * 0.72 + elevationScore * 0.28));
         } else {
           t = tNorm;
         }
 
-        const c = lerpColor(COLOR_MAPS[mode] || COLOR_MAPS.elevation, t);
+        let c = lerpColor(COLOR_MAPS[mode] || COLOR_MAPS.elevation, t);
+
+        if (waterInfluence > 0.06) {
+          const shallow = { r: 0.20, g: 0.65, b: 0.88 };
+          const deep = { r: 0.04, g: 0.25, b: 0.70 };
+          c = {
+            r: shallow.r + (deep.r - shallow.r) * waterInfluence,
+            g: shallow.g + (deep.g - shallow.g) * waterInfluence,
+            b: shallow.b + (deep.b - shallow.b) * waterInfluence
+          };
+        }
+
         colors.push(c.r, c.g, c.b);
       }
     }
 
-    // Faces
     for (let gy = 0; gy < GRID_RESOLUTION; gy++) {
       for (let gx = 0; gx < GRID_RESOLUTION; gx++) {
         const a = gy * N + gx;
@@ -539,7 +802,93 @@ const Terrain = (() => {
       vertexColors: true,
       side: THREE.DoubleSide
     });
+
     return new THREE.Mesh(geometry, material);
+  }
+
+  function disposeMeshObject(obj) {
+    if (!obj) return;
+    if (scene) scene.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  }
+
+  function createWireframeMeshFromCurrentGeometry() {
+    if (!mesh) return null;
+
+    const wfMat = new THREE.MeshBasicMaterial({
+      color: 0xd9f99d,
+      wireframe: true,
+      transparent: true,
+      opacity: isWireframe ? 0.55 : 0.0,
+      depthTest: false
+    });
+
+    return new THREE.Mesh(mesh.geometry.clone(), wfMat);
+  }
+
+  function rebuildTerrainSurface(mode = currentMode) {
+    if (!scene || !terrainData) return;
+
+    currentMode = mode;
+
+    disposeMeshObject(mesh);
+    disposeMeshObject(wireframeMesh);
+
+    mesh = buildTerrainMesh(terrainData.elevGrid, terrainData.slopeGrid, mode);
+    mesh.receiveShadow = false;
+    mesh.castShadow = false;
+    scene.add(mesh);
+
+    wireframeMesh = createWireframeMeshFromCurrentGeometry();
+    if (wireframeMesh) scene.add(wireframeMesh);
+
+    updateTerrainOverlayInfo();
+  }
+
+  function updateTerrainOverlayInfo() {
+    if (!terrainData) return;
+
+    const avgSlope = terrainData.slopeGrid.reduce((a, b) => a + b, 0) / terrainData.slopeGrid.length;
+    const aspectNames = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const avgAspect = terrainData.aspectGrid.reduce((a, b) => a + b, 0) / terrainData.aspectGrid.length;
+    const range = terrainData.maxE - terrainData.minE;
+
+    const elevEl = document.getElementById('toi-elev');
+    const slopeEl = document.getElementById('toi-slope');
+    const aspectEl = document.getElementById('toi-aspect');
+    const rangeEl = document.getElementById('toi-range');
+    const sourceEl = document.getElementById('toi-source');
+    const waterEl = document.getElementById('toi-water');
+
+    if (elevEl) elevEl.textContent = `Elevation: ${Math.round(terrainData.avgE)}m avg`;
+    if (slopeEl) slopeEl.textContent = `Slope: ${avgSlope.toFixed(1)}° avg`;
+    if (aspectEl) aspectEl.textContent = `Aspect: ${aspectNames[Math.round(avgAspect / 45) % 8]}`;
+    if (rangeEl) rangeEl.textContent = `Range: ${Math.round(terrainData.minE)}–${Math.round(terrainData.maxE)}m (${Math.round(range)}m)`;
+    if (sourceEl) sourceEl.textContent = `DEM Source: ${terrainData.sourceLabel}`;
+    if (waterEl) {
+      waterEl.textContent = terrainData.waterFeatureCount > 0
+        ? `Water overlay: ${terrainData.waterFeatureCount} mapped feature(s), visual aid only`
+        : 'Water overlay: none detected yet';
+    }
+  }
+
+  function setWaterFeatures(waterBodies = []) {
+    waterOverlayFeatures = Array.isArray(waterBodies) ? waterBodies : [];
+    waterOverlayRevision += 1;
+
+    if (!terrainData || !scene) return;
+
+    terrainData.waterFeatureCount = waterOverlayFeatures.length;
+    terrainData.waterOverlayRevision = waterOverlayRevision;
+
+    console.log('PAL-AI terrain water overlay updated:', {
+      waterFeatureCount: waterOverlayFeatures.length,
+      note: 'Visual water overlay only; not measured bathymetry.'
+    });
+
+    rebuildTerrainSurface(currentMode);
+    renderOnce();
   }
 
   // ── Public API ──
@@ -555,14 +904,21 @@ const Terrain = (() => {
       buildScene(canvas);
     }
 
-    // Clear old terrain
-    if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
-    if (wireframeMesh) { scene.remove(wireframeMesh); wireframeMesh.geometry.dispose(); wireframeMesh.material.dispose(); }
+    // Clear old terrain and any water overlay from the previous run.
+    disposeMeshObject(mesh);
+    disposeMeshObject(wireframeMesh);
+    mesh = null;
+    wireframeMesh = null;
+    waterOverlayFeatures = [];
+    waterOverlayRevision += 1;
 
-
-    // Fetch elevation data
+    // Fetch elevation data.
     const result = await fetchElevations(lat, lng, gridKm);
     const { elevGrid, slopeGrid, aspectGrid } = { ...result, ...computeSlopeAspect(result.elevGrid, result.step) };
+
+    const minE = Math.min(...elevGrid);
+    const maxE = Math.max(...elevGrid);
+    const avgE = elevGrid.reduce((a, b) => a + b, 0) / elevGrid.length;
 
     terrainData = {
       elevGrid,
@@ -571,27 +927,38 @@ const Terrain = (() => {
       lat,
       lng,
       gridKm,
+      step: result.step,
+      half: result.half,
       gridResolution: GRID_RESOLUTION,
-      minE: Math.min(...elevGrid),
-      maxE: Math.max(...elevGrid),
-      avgE: elevGrid.reduce((a, b) => a + b, 0) / elevGrid.length,
-      usedAPI: result.usedAPI
+      minE,
+      maxE,
+      avgE,
+      elevRange: maxE - minE,
+      usedAPI: result.usedAPI,
+      realPointCount: result.realPointCount,
+      totalPointCount: result.totalPointCount,
+      demCoveragePct: result.demCoveragePct,
+      interpolatedCount: result.interpolatedCount,
+      syntheticCount: result.syntheticCount,
+      fallbackFilledCount: result.fallbackFilledCount,
+      sourceMode: result.sourceMode,
+      sourceLabel: result.sourceLabel,
+      waterFeatureCount: 0,
+      waterOverlayRevision
     };
 
-    // Update legend
     updateLegend(mode);
-
-    mesh = buildTerrainMesh(elevGrid, slopeGrid, mode);
-    mesh.receiveShadow = false;
-    mesh.castShadow = false;
-    scene.add(mesh);
-
+    rebuildTerrainSurface(mode);
     applyDefaultTerrainCamera();
 
-    console.log("Terrain mesh added:", {
-      vertices: mesh.geometry.attributes.position.count,
+    console.log('PAL-AI terrain mesh added:', {
+      vertices: mesh?.geometry?.attributes?.position?.count,
       sceneChildren: scene.children.length,
-      meshVisible: mesh.visible
+      meshVisible: mesh?.visible,
+      demSource: terrainData.sourceLabel,
+      minE: Math.round(minE),
+      maxE: Math.round(maxE),
+      rangeE: Math.round(maxE - minE)
     });
 
     // Force camera to frame the terrain after mesh creation.
@@ -602,26 +969,6 @@ const Terrain = (() => {
       controls.target.set(0, 0, 0);
       controls.update();
     }
-
-
-    // Wireframe overlay
-    const wfMat = new THREE.MeshBasicMaterial({
-      color: 0xd9f99d,
-      wireframe: true,
-      transparent: true,
-      opacity: isWireframe ? 0.55 : 0.0,
-      depthTest: false
-    });
-    wireframeMesh = new THREE.Mesh(mesh.geometry.clone(), wfMat);
-    scene.add(wireframeMesh);
-
-    // Update overlay info
-    document.getElementById('toi-elev').textContent = `Elevation: ${Math.round(terrainData.avgE)}m avg`;
-    const avgSlope = slopeGrid.reduce((a, b) => a + b, 0) / slopeGrid.length;
-    document.getElementById('toi-slope').textContent = `Slope: ${avgSlope.toFixed(1)}° avg`;
-    const aspectNames = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-    const avgAspect = aspectGrid.reduce((a, b) => a + b, 0) / aspectGrid.length;
-    document.getElementById('toi-aspect').textContent = `Aspect: ${aspectNames[Math.round(avgAspect / 45) % 8]}`;
 
 
     // Start animation
@@ -713,22 +1060,8 @@ const Terrain = (() => {
     if (!mesh || !terrainData) return;
     isExaggerated = !isExaggerated;
     currentExaggeration = isExaggerated ? EXAGGERATION : BASE_EXAGGERATION;
-    // Rebuild with new exaggeration
-    const { elevGrid, slopeGrid } = terrainData;
-    scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose();
-    scene.remove(wireframeMesh); wireframeMesh.geometry.dispose(); wireframeMesh.material.dispose();
-    mesh = buildTerrainMesh(elevGrid, slopeGrid, currentMode);
-    mesh.receiveShadow = false; mesh.castShadow = false;
-    scene.add(mesh);
-    const wfMat = new THREE.MeshBasicMaterial({
-      color: 0xd9f99d,
-      wireframe: true,
-      transparent: true,
-      opacity: isWireframe ? 0.55 : 0.0,
-      depthTest: false
-    });
-    wireframeMesh = new THREE.Mesh(mesh.geometry.clone(), wfMat);
-    scene.add(wireframeMesh);
+    rebuildTerrainSurface(currentMode);
+    renderOnce();
   }
 
   function toggleAnimation() {
@@ -738,22 +1071,9 @@ const Terrain = (() => {
   function updateMode(mode) {
     if (!terrainData) return;
     currentMode = mode;
-    const { elevGrid, slopeGrid } = terrainData;
-    scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose();
-    scene.remove(wireframeMesh); wireframeMesh.geometry.dispose(); wireframeMesh.material.dispose();
-    mesh = buildTerrainMesh(elevGrid, slopeGrid, mode);
-    mesh.receiveShadow = false; mesh.castShadow = false;
-    scene.add(mesh);
-    const wfMat = new THREE.MeshBasicMaterial({
-      color: 0xd9f99d,
-      wireframe: true,
-      transparent: true,
-      opacity: isWireframe ? 0.55 : 0.0,
-      depthTest: false
-    });
-    wireframeMesh = new THREE.Mesh(mesh.geometry.clone(), wfMat);
-    scene.add(wireframeMesh);
+    rebuildTerrainSurface(mode);
     updateLegend(mode);
+    renderOnce();
   }
 
   function updateLegend(mode) {
@@ -889,7 +1209,16 @@ const Terrain = (() => {
       yieldImpactScore,
       overallModifier: overallModifier.toFixed(3),
       details: {
-        elevation: { avgE, minE: data.minE, maxE: data.maxE, elevRange, elevScore },
+        elevation: {
+          avgE,
+          minE: data.minE,
+          maxE: data.maxE,
+          elevRange,
+          elevScore,
+          demSourceLabel: data.sourceLabel || (data.usedAPI ? 'Real DEM' : 'Synthetic fallback'),
+          demCoveragePct: data.demCoveragePct || 0,
+          fallbackFilledCount: data.fallbackFilledCount || 0
+        },
         slope: { avgSlope, flatFraction, steepFraction, mildFraction, slopeScore },
         soil: { soilType, soilFertility, soilpH, soilTexture, drainageScore },
         irrigation: { irrigationScore, irrigationType, elevVariance: elevStdDev.toFixed(1) }
@@ -913,6 +1242,7 @@ const Terrain = (() => {
     toggleExaggeration,
     toggleAnimation,
     updateMode,
+    setWaterFeatures,
     computeScores,
     getCrossSection,
     disposeWebGLScene,
@@ -922,3 +1252,6 @@ const Terrain = (() => {
     getData: () => terrainData
   };
 })();
+
+// Expose Terrain on window so app.js recovery guards can call it reliably.
+window.Terrain = Terrain;

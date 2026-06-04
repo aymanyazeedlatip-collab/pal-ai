@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PAL-AI — Predictive Rice Agriculture using Layered AI</title>
+  <link rel="icon" type="image/png" href="/static/assets/pal-ai-logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link
     href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap"
@@ -19,10 +20,68 @@
   <!-- Three.js + OrbitControls -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=terrain-realism-1" />
 </head>
 
-<body>
+<body class="welcome-active">
+
+  <!-- ══════════ PAL-AI WELCOME SCREEN ══════════ -->
+  <div id="palai-welcome-screen" class="palai-welcome-screen"
+    style="position:fixed;inset:0;z-index:12000;display:grid;place-items:center;overflow:hidden;">
+    <div class="welcome-bg-grid"></div>
+    <div class="welcome-glow welcome-glow-1"></div>
+    <div class="welcome-glow welcome-glow-2"></div>
+
+    <div class="welcome-orbit welcome-orbit-1">
+      <span></span>
+    </div>
+    <div class="welcome-orbit welcome-orbit-2">
+      <span></span>
+    </div>
+    <div class="welcome-orbit welcome-orbit-3">
+      <span></span>
+    </div>
+
+    <div class="welcome-rice-particles">
+      <i style="--x: 8%; --d: 0s;"></i>
+      <i style="--x: 18%; --d: 1.2s;"></i>
+      <i style="--x: 31%; --d: .4s;"></i>
+      <i style="--x: 44%; --d: 1.8s;"></i>
+      <i style="--x: 57%; --d: .8s;"></i>
+      <i style="--x: 69%; --d: 2.2s;"></i>
+      <i style="--x: 83%; --d: 1.4s;"></i>
+      <i style="--x: 94%; --d: .6s;"></i>
+    </div>
+
+    <div class="welcome-panel">
+      <div class="welcome-logo-wrap">
+        <img src="/static/assets/pal-ai-logo.png" alt="PAL-AI logo">
+        <span class="welcome-logo-ring ring-a"></span>
+        <span class="welcome-logo-ring ring-b"></span>
+        <span class="welcome-logo-ring ring-c"></span>
+      </div>
+
+      <div class="welcome-kicker">Predictive Rice Agriculture using Layered AI</div>
+
+      <h1>
+        Welcome to <span>PAL-AI</span>
+      </h1>
+
+      <p>
+        A precision agriculture intelligence platform for rice forecasting, terrain analysis,
+        pest-risk assessment, and smarter farm planning.
+      </p>
+
+      <button class="welcome-enter-btn" onclick="enterPALAIWebsite()">
+        <span>Enter Website</span>
+        <b>→</b>
+      </button>
+
+      <div class="welcome-hint">
+        Voice guide will begin after entering.
+      </div>
+    </div>
+  </div>
 
   <!-- ══════════ LOADING SCREEN ══════════ -->
   <div id="loading-overlay" class="hidden">
@@ -86,26 +145,85 @@
         <span class="nav-label">HOME</span>
       </button>
 
-      <button class="nav-btn" data-tab="forecast" onclick="switchTab('forecast')">
-        <span class="nav-icon">
-          <img src="/static/assets/nav-icons/forecast.png" alt="Forecast icon">
-        </span>
-        <span class="nav-label">FORECAST</span>
-      </button>
+      <!-- Forecast Dropdown -->
+      <div class="nav-dropdown">
+        <button class="nav-btn nav-parent-btn" data-tab="forecast"
+          onclick="handleAnalysisParentClick('forecast', 'forecast-submenu')">
+          <span class="nav-icon">
+            <img src="/static/assets/nav-icons/forecast.png" alt="Forecast icon">
+          </span>
+          <span class="nav-label">FORECAST</span>
+          <span class="nav-chevron">▾</span>
+        </button>
 
-      <button class="nav-btn" data-tab="terrain" onclick="switchTab('terrain')">
-        <span class="nav-icon">
-          <img src="/static/assets/nav-icons/terrain.png" alt="Terrain icon">
-        </span>
-        <span class="nav-label">TERRAIN</span>
-      </button>
+        <div class="nav-submenu" id="forecast-submenu">
+          <button class="nav-sub-btn active" data-forecast-subtab="yield" onclick="switchForecastSubtab('yield')">
+            Yield Forecast
+          </button>
 
-      <button class="nav-btn" data-tab="pest" onclick="switchTab('pest')">
-        <span class="nav-icon">
-          <img src="/static/assets/nav-icons/pest.png" alt="Pest Risk icon">
-        </span>
-        <span class="nav-label">PEST RISK ANALYSIS</span>
-      </button>
+          <button class="nav-sub-btn" data-forecast-subtab="live" onclick="switchForecastSubtab('live')">
+            Short-term Optimal Planting Forecast
+          </button>
+
+          <button class="nav-sub-btn" data-forecast-subtab="longterm" onclick="switchForecastSubtab('longterm')">
+            Long-Term Planting Windows
+          </button>
+
+        </div>
+      </div>
+
+      <!-- Farm Site Analysis Dropdown -->
+      <div class="nav-dropdown">
+        <button class="nav-btn nav-parent-btn" data-tab="terrain"
+          onclick="handleAnalysisParentClick('terrain', 'terrain-submenu')">
+          <span class="nav-icon">
+            <img src="/static/assets/nav-icons/terrain.png" alt="Farm Site Analysis icon">
+          </span>
+          <span class="nav-label">FARM SITE ANALYSIS</span>
+          <span class="nav-chevron">▾</span>
+        </button>
+
+        <div class="nav-submenu" id="terrain-submenu">
+          <button class="nav-sub-btn active" data-sub-parent="terrain" data-sub-target="terrain-3d"
+            onclick="switchAnalysisSubtab('terrain', 'terrain-3d')">
+            3D Terrain Analysis
+          </button>
+
+          <button class="nav-sub-btn" data-sub-parent="terrain" data-sub-target="terrain-water"
+            onclick="switchAnalysisSubtab('terrain', 'terrain-water')">
+            Irrigation & Water Bodies
+          </button>
+
+          <button class="nav-sub-btn" data-sub-parent="terrain" data-sub-target="terrain-fertilizer"
+            onclick="switchAnalysisSubtab('terrain', 'terrain-fertilizer')">
+            Soil & Fertilizer Recommendation
+          </button>
+        </div>
+      </div>
+
+      <!-- Pest Risk Analysis Dropdown -->
+      <div class="nav-dropdown">
+        <button class="nav-btn nav-parent-btn" data-tab="pest"
+          onclick="handleAnalysisParentClick('pest', 'pest-submenu')">
+          <span class="nav-icon">
+            <img src="/static/assets/nav-icons/pest.png" alt="Pest Risk icon">
+          </span>
+          <span class="nav-label">PEST-OUTBREAK RISK</span>
+          <span class="nav-chevron">▾</span>
+        </button>
+
+        <div class="nav-submenu" id="pest-submenu">
+          <button class="nav-sub-btn active" data-sub-parent="pest" data-sub-target="pest-outbreak"
+            onclick="switchAnalysisSubtab('pest', 'pest-outbreak')">
+            Outbreak Analysis
+          </button>
+
+          <button class="nav-sub-btn" data-sub-parent="pest" data-sub-target="pest-specific"
+            onclick="switchAnalysisSubtab('pest', 'pest-specific')">
+            Pest-Specific Risk Assessment
+          </button>
+        </div>
+      </div>
 
       <button class="nav-btn" data-tab="calculator" onclick="switchTab('calculator')">
         <span class="nav-icon">
@@ -114,9 +232,27 @@
         <span class="nav-label">MANUAL CALCULATION</span>
       </button>
 
+      <button class="nav-btn" data-tab="about" onclick="switchTab('about')">
+        <span class="nav-icon">
+          <img src="/static/assets/nav-icons/about.png" alt="About icon">
+        </span>
+        <span class="nav-label">ABOUT</span>
+      </button>
+
     </div>
 
     <div class="sidebar-bottom">
+      <div class="voice-control-row" aria-label="Voice narrator controls">
+        <button id="voice-play-btn" class="voice-icon-btn" onclick="replayCurrentVoiceLine()" title="Play voice guide"
+          aria-label="Play voice guide">
+          🔊
+        </button>
+
+        <button id="voice-mute-btn" class="voice-icon-btn" onclick="toggleVoiceMute()" title="Mute voice guide"
+          aria-label="Mute voice guide">
+          🔇
+        </button>
+      </div>
       <div class="sidebar-status">
         <span class="status-dot"></span>
         <span class="sidebar-status-text">AI System Online</span>
@@ -335,184 +471,378 @@
       </div>
     </div>
 
-    <div class="forecast-layout">
+    <div class="analysis-subtab-row forecast-subtab-row">
+      <button class="analysis-subtab-btn active" data-forecast-subtab="yield" onclick="switchForecastSubtab('yield')">
+        Yield Forecast
+      </button>
 
-      <!-- Location Card -->
-      <div class="card" id="location-card">
-        <div class="card-header">
-          <div class="card-icon">📍</div>
-          <div>
-            <h2 class="card-title">Your Location</h2>
-            <p class="card-desc">Detect automatically or enter manually</p>
-          </div>
-        </div>
+      <button class="analysis-subtab-btn" data-forecast-subtab="live" onclick="switchForecastSubtab('live')">
+        Short-term Optimal Planting Forecast (10-DAY)
+      </button>
 
-        <button class="btn btn-primary btn-gps" id="gps-btn" onclick="detectLocation()">
-          <span class="btn-icon">🛰️</span> Detect My Location Automatically
-        </button>
-        <div id="gps-status" class="gps-status hidden"></div>
-
-        <!-- Interactive Map -->
-        <div class="map-label">📌 Drag the pin to your exact location</div>
-        <div id="forecast-map" class="forecast-map-container"></div>
-
-        <div class="divider"><span>or enter manually</span></div>
-
-        <!-- Cascading dropdowns -->
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Region <span class="required">*</span></label>
-            <select id="region-select" class="form-select" onchange="onRegionChange()">
-              <option value="">— Select Region —</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Province</label>
-            <select id="province-select" class="form-select" onchange="onProvinceChange()" disabled>
-              <option value="">— Select Province —</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Municipality / City</label>
-            <select id="municipality-select" class="form-select" onchange="onMunicipalityChange()" disabled>
-              <option value="">— Select Municipality —</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Barangay</label>
-            <select id="barangay-select" class="form-select" disabled>
-              <option value="">— Select Barangay —</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Farm details -->
-        <div class="divider"><span>farm details</span></div>
-        <div class="form-grid-2">
-          <div class="form-group">
-            <label class="form-label">Farm Size (hectares)</label>
-            <input id="hectare-input" class="form-input" type="number" step="0.1" min="0.1" placeholder="e.g. 2.5 ha" />
-            <span class="form-hint">Used to calculate total production</span>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Crop Type</label>
-            <select id="crop-type-select" class="form-select">
-              <option value="inbred">Inbred Rice (traditional)</option>
-              <option value="hybrid">Hybrid Rice</option>
-              <option value="glutinous">Glutinous / Malagkit</option>
-              <option value="aromatic">Aromatic Rice (Jasmine / Pandan)</option>
-              <option value="upland">Upland Rice</option>
-            </select>
-          </div>
-        </div>
-
-        <button class="btn btn-primary btn-forecast" id="forecast-btn" onclick="runForecast()" disabled>
-          <span class="btn-icon">📈</span> Generate Forecast to 2100
-        </button>
-      </div>
-
-      <!-- Results -->
-      <div id="results-section" class="hidden">
-        <div class="results-header">
-          <div>
-            <div class="results-badge">Forecast Results</div>
-            <h2 id="results-region-name" class="results-title">—</h2>
-            <p id="results-location-detail" class="results-location"></p>
-          </div>
-          <div class="results-meta">
-            <span class="meta-tag">2015 – 2100</span>
-            <span class="meta-tag">XGBoost AI</span>
-          </div>
-        </div>
-
-        <!-- Summary cards -->
-        <div class="summary-grid">
-          <div class="summary-card">
-            <div class="summary-icon">📊</div>
-            <div class="summary-label">Avg Historical Yield</div>
-            <div class="summary-value" id="sum-hist-avg">—</div>
-            <div class="summary-unit">t/ha</div>
-          </div>
-          <div class="summary-card accent-card">
-            <div class="summary-icon">🔮</div>
-            <div class="summary-label">Projected 2050</div>
-            <div class="summary-value" id="sum-2050">—</div>
-            <div class="summary-unit">t/ha</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-icon">🌾</div>
-            <div class="summary-label">Projected 2100</div>
-            <div class="summary-value" id="sum-2100">—</div>
-            <div class="summary-unit">t/ha</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-icon">📉</div>
-            <div class="summary-label">Trend Direction</div>
-            <div class="summary-value small" id="sum-trend">—</div>
-          </div>
-          <div class="summary-card accent-card2" id="sum-total-card" style="display:none">
-            <div class="summary-icon">🏡</div>
-            <div class="summary-label">Total Farm Yield (2050)</div>
-            <div class="summary-value" id="sum-total">—</div>
-            <div class="summary-unit" id="sum-total-unit">t total</div>
-          </div>
-        </div>
-
-        <!-- Chart tabs -->
-        <div class="chart-tabs">
-          <button class="tab-btn active" onclick="switchChartTab('annual', this)">Annual Yield</button>
-          <button class="tab-btn" onclick="switchChartTab('quarterly', this)">Quarterly Breakdown</button>
-          <button class="tab-btn" onclick="switchChartTab('climate', this)">Climate Projections</button>
-        </div>
-
-        <div class="chart-panel active" id="panel-annual">
-          <div class="card chart-card">
-            <div class="chart-header">
-              <h3 class="chart-title">Annual Average Rice Yield (2015–2100)</h3>
-              <div class="chart-controls">
-                <button class="ctrl-btn" onclick="resetZoom('annualChart')">Reset Zoom</button>
-              </div>
-            </div>
-            <p class="chart-hint">💡 Scroll to zoom · Drag to pan · Solid = historical · Dashed = forecast</p>
-            <div class="chart-wrap"><canvas id="annualChart"></canvas></div>
-          </div>
-        </div>
-
-        <div class="chart-panel" id="panel-quarterly">
-          <div class="card chart-card">
-            <div class="chart-header">
-              <h3 class="chart-title">Quarterly Yield Forecast by Season</h3>
-              <div class="chart-controls">
-                <button class="ctrl-btn" onclick="resetZoom('quarterlyChart')">Reset Zoom</button>
-              </div>
-            </div>
-            <p class="chart-hint">💡 Q1=Jan-Mar · Q2=Apr-Jun · Q3=Jul-Sep · Q4=Oct-Dec</p>
-            <div class="chart-wrap"><canvas id="quarterlyChart"></canvas></div>
-          </div>
-        </div>
-
-        <div class="chart-panel" id="panel-climate">
-          <div class="card chart-card">
-            <div class="chart-header">
-              <h3 class="chart-title">Projected Climate Variables (2026–2100)</h3>
-              <div class="chart-controls">
-                <select id="climate-var-select" class="ctrl-select" onchange="updateClimateChart()">
-                  <option value="temperature">Temperature (°C)</option>
-                  <option value="dew_point">Dew Point (°C)</option>
-                  <option value="precipitation">Precipitation (mm)</option>
-                  <option value="wind_speed">Wind Speed (km/h)</option>
-                  <option value="humidity">Humidity (%)</option>
-                </select>
-                <button class="ctrl-btn" onclick="resetZoom('climateChart')">Reset Zoom</button>
-              </div>
-            </div>
-            <p class="chart-hint">💡 Linear trend extrapolated from 2015–2025 historical data</p>
-            <div class="chart-wrap"><canvas id="climateChart"></canvas></div>
-          </div>
-        </div>
-
-      </div>
+      <button class="analysis-subtab-btn" data-forecast-subtab="longterm" onclick="switchForecastSubtab('longterm')">
+        Long-Term Planting Windows (Yearly)
+      </button>
     </div>
+
+    <div id="forecast-yield-panel" class="forecast-subtab-panel">
+      <div class="forecast-layout">
+
+        <!-- Location Card -->
+        <div class="card" id="location-card">
+          <div class="card-header">
+            <div class="card-icon">📍</div>
+            <div>
+              <h2 class="card-title">Your Location</h2>
+              <p class="card-desc">Detect automatically or enter manually</p>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-gps" id="gps-btn" onclick="detectLocation()">
+            <span class="btn-icon">🛰️</span> Detect My Location Automatically
+          </button>
+          <div id="gps-status" class="gps-status hidden"></div>
+
+          <!-- Interactive Map -->
+          <div class="map-label">📌 Drag the pin to your exact location</div>
+          <div id="forecast-map" class="forecast-map-container"></div>
+
+          <div class="divider"><span>or enter manually</span></div>
+
+          <!-- Cascading dropdowns -->
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Region <span class="required">*</span></label>
+              <select id="region-select" class="form-select" onchange="onRegionChange()">
+                <option value="">— Select Region —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Province</label>
+              <select id="province-select" class="form-select" onchange="onProvinceChange()" disabled>
+                <option value="">— Select Province —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Municipality / City</label>
+              <select id="municipality-select" class="form-select" onchange="onMunicipalityChange()" disabled>
+                <option value="">— Select Municipality —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Barangay</label>
+              <select id="barangay-select" class="form-select" disabled>
+                <option value="">— Select Barangay —</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Farm details -->
+          <div class="divider"><span>farm details</span></div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Farm Size (hectares)</label>
+              <input id="hectare-input" class="form-input" type="number" step="0.1" min="0.1"
+                placeholder="e.g. 2.5 ha" />
+              <span class="form-hint">Used to calculate total production</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Crop Type</label>
+              <select id="crop-type-select" class="form-select">
+                <option value="inbred">Inbred Rice (traditional)</option>
+                <option value="hybrid">Hybrid Rice</option>
+                <option value="glutinous">Glutinous / Malagkit</option>
+                <option value="aromatic">Aromatic Rice (Jasmine / Pandan)</option>
+                <option value="upland">Upland Rice</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-forecast" id="forecast-btn" onclick="runForecast()" disabled>
+            <span class="btn-icon">📈</span> Generate Forecast to 2100
+          </button>
+        </div>
+
+        <!-- Results -->
+        <div id="results-section" class="hidden">
+          <div class="results-header">
+            <div>
+              <div class="results-badge">Forecast Results</div>
+              <h2 id="results-region-name" class="results-title">—</h2>
+              <p id="results-location-detail" class="results-location"></p>
+            </div>
+            <div class="results-meta">
+              <span class="meta-tag">2015 – 2100</span>
+              <span class="meta-tag">XGBoost AI</span>
+            </div>
+          </div>
+
+          <!-- Summary cards -->
+          <div class="summary-grid">
+            <div class="summary-card">
+              <div class="summary-icon">📊</div>
+              <div class="summary-label">Avg Historical Yield</div>
+              <div class="summary-value" id="sum-hist-avg">—</div>
+              <div class="summary-unit">t/ha</div>
+            </div>
+            <div class="summary-card accent-card">
+              <div class="summary-icon">🔮</div>
+              <div class="summary-label">Projected 2050</div>
+              <div class="summary-value" id="sum-2050">—</div>
+              <div class="summary-unit">t/ha</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-icon">🌾</div>
+              <div class="summary-label">Projected 2100</div>
+              <div class="summary-value" id="sum-2100">—</div>
+              <div class="summary-unit">t/ha</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-icon">📉</div>
+              <div class="summary-label">Trend Direction</div>
+              <div class="summary-value small" id="sum-trend">—</div>
+            </div>
+            <div class="summary-card accent-card2" id="sum-total-card" style="display:none">
+              <div class="summary-icon">🏡</div>
+              <div class="summary-label">Total Farm Yield (2050)</div>
+              <div class="summary-value" id="sum-total">—</div>
+              <div class="summary-unit" id="sum-total-unit">t total</div>
+            </div>
+          </div>
+
+          <!-- Chart tabs -->
+          <div class="chart-tabs">
+            <button class="tab-btn active" onclick="switchChartTab('annual', this)">Annual Yield</button>
+            <button class="tab-btn" onclick="switchChartTab('quarterly', this)">Quarterly Breakdown</button>
+            <button class="tab-btn" onclick="switchChartTab('climate', this)">Climate Projections</button>
+          </div>
+
+          <div class="chart-panel active" id="panel-annual">
+            <div class="card chart-card">
+              <div class="chart-header">
+                <h3 class="chart-title">Annual Average Rice Yield (2015–2100)</h3>
+                <div class="chart-controls">
+                  <button class="ctrl-btn" onclick="resetZoom('annualChart')">Reset Zoom</button>
+                </div>
+              </div>
+              <p class="chart-hint">💡 Scroll to zoom · Drag to pan · Solid = historical · Dashed = forecast</p>
+              <div class="chart-wrap"><canvas id="annualChart"></canvas></div>
+            </div>
+          </div>
+
+          <div class="chart-panel" id="panel-quarterly">
+            <div class="card chart-card">
+              <div class="chart-header">
+                <h3 class="chart-title">Quarterly Yield Forecast by Season</h3>
+                <div class="chart-controls">
+                  <button class="ctrl-btn" onclick="resetZoom('quarterlyChart')">Reset Zoom</button>
+                </div>
+              </div>
+              <p class="chart-hint">💡 Q1=Jan-Mar · Q2=Apr-Jun · Q3=Jul-Sep · Q4=Oct-Dec</p>
+              <div class="chart-wrap"><canvas id="quarterlyChart"></canvas></div>
+            </div>
+          </div>
+
+          <div class="chart-panel" id="panel-climate">
+            <div class="card chart-card">
+              <div class="chart-header">
+                <h3 class="chart-title">Projected Climate Variables (2026–2100)</h3>
+                <div class="chart-controls">
+                  <select id="climate-var-select" class="ctrl-select" onchange="updateClimateChart()">
+                    <option value="temperature">Temperature (°C)</option>
+                    <option value="dew_point">Dew Point (°C)</option>
+                    <option value="precipitation">Precipitation (mm)</option>
+                    <option value="wind_speed">Wind Speed (km/h)</option>
+                    <option value="humidity">Humidity (%)</option>
+                  </select>
+                  <button class="ctrl-btn" onclick="resetZoom('climateChart')">Reset Zoom</button>
+                </div>
+              </div>
+              <p class="chart-hint">💡 Linear trend extrapolated from 2015–2025 historical data</p>
+              <div class="chart-wrap"><canvas id="climateChart"></canvas></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- /forecast-yield-panel -->
+    <div id="forecast-live-panel" class="forecast-subtab-panel subsection-hidden">
+
+      <div class="live-forecast-shell">
+        <div class="live-forecast-hero">
+          <div>
+            <div class="live-kicker"> PAL-AI Suitability Scoring</div>
+            <h2>Live Planting Compatibility Calendar</h2>
+            <p>
+              Uses live weather forecast data for your selected farm location and converts daily temperature, humidity,
+              rainfall, wind, and dew point into a planting compatibility score.
+            </p>
+          </div>
+
+          <div class="live-forecast-action-card">
+            <div class="live-action-title">Forecast Window</div>
+            <div class="live-action-main">10 Days</div>
+            <div class="live-action-sub">Google daily forecast limit</div>
+            <button class="btn btn-primary" onclick="runLivePlantingForecast()">
+              🌦️ Generate Live Planting Forecast
+            </button>
+          </div>
+        </div>
+
+        <div id="live-forecast-status" class="live-forecast-status hidden"></div>
+
+        <div id="live-forecast-summary" class="live-forecast-summary hidden">
+          <div class="live-summary-card">
+            <span>Best Planting Day</span>
+            <strong id="live-best-day">—</strong>
+          </div>
+          <div class="live-summary-card">
+            <span>Best Score</span>
+            <strong id="live-best-score">—</strong>
+          </div>
+          <div class="live-summary-card">
+            <span>Average Score</span>
+            <strong id="live-avg-score">—</strong>
+          </div>
+          <div class="live-summary-card">
+            <span>Source</span>
+            <strong>Google Weather</strong>
+          </div>
+        </div>
+
+        <div class="planting-calendar-wrap">
+          <div class="planting-calendar-header">
+            <div>Sun</div>
+            <div>Mon</div>
+            <div>Tue</div>
+            <div>Wed</div>
+            <div>Thu</div>
+            <div>Fri</div>
+            <div>Sat</div>
+          </div>
+
+          <div id="planting-calendar-grid" class="planting-calendar-grid">
+            <div class="planting-empty-state">
+              <div class="planting-empty-icon">🌾</div>
+              <h3>No live planting forecast yet</h3>
+              <p>
+                Select a region or place the map pin in the Yield Forecast sub-tab first, then generate the live
+                planting
+                calendar.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="live-factor-legend">
+          <div><span class="legend-dot excellent"></span> Excellent 85–100</div>
+          <div><span class="legend-dot good"></span> Good 70–84</div>
+          <div><span class="legend-dot moderate"></span> Moderate 55–69</div>
+          <div><span class="legend-dot caution"></span> Caution 40–54</div>
+          <div><span class="legend-dot poor"></span> Poor below 40</div>
+        </div>
+
+        <div class="live-note-card">
+          <strong>Note:</strong>
+          Google Weather API daily forecast supports up to 10 days only. The calendar uses live Google weather data for
+          those available days.
+        </div>
+      </div>
+
+    </div><!-- /forecast-live-panel -->
+    <div id="forecast-longterm-panel" class="forecast-subtab-panel subsection-hidden">
+
+      <div class="longterm-planting-shell">
+        <div class="longterm-hero">
+          <div>
+            <div class="longterm-kicker">PAL-AI Climate Projection</div>
+            <h2>Long-Term Optimal Planting Windows</h2>
+            <p>
+              Estimates the best planting week for every forecast year until 2100 using PAL-AI’s long-range climate and
+              yield projections. This is a model-based planning guide, not live weather.
+            </p>
+          </div>
+
+          <div class="longterm-action-card">
+            <div class="longterm-action-label">Forecast Horizon</div>
+            <div class="longterm-action-main">2025–2100</div>
+            <div class="longterm-action-sub">Best week per year</div>
+            <button class="btn btn-primary" onclick="generateLongTermPlantingWindows()">
+              📅 Generate Planting Windows
+            </button>
+          </div>
+        </div>
+
+        <div id="longterm-status" class="longterm-status hidden"></div>
+
+        <div id="longterm-summary" class="longterm-summary hidden">
+          <div class="longterm-summary-card">
+            <span>Best Overall Year</span>
+            <strong id="lt-best-year">—</strong>
+          </div>
+          <div class="longterm-summary-card">
+            <span>Most Common Best Month</span>
+            <strong id="lt-common-month">—</strong>
+          </div>
+          <div class="longterm-summary-card">
+            <span>Average Compatibility</span>
+            <strong id="lt-average-score">—</strong>
+          </div>
+          <div class="longterm-summary-card">
+            <span>Forecast Range</span>
+            <strong>Until 2100</strong>
+          </div>
+        </div>
+
+        <div class="longterm-calendar-card-wrap">
+          <div class="chart-card-head">
+            <div>
+              <h3>Interactive Monthly Planting Calendar</h3>
+              <p>Choose a forecast year, then view the actual month calendar with PAL-AI's best planting week
+                highlighted.</p>
+            </div>
+          </div>
+          <div id="longterm-calendar-board" class="longterm-calendar-board">
+            <div class="longterm-calendar-empty">
+              <div class="planting-empty-icon">📅</div>
+              <h3>No long-term calendar yet</h3>
+              <p>Generate planting windows to highlight the best planting days on an actual calendar.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="longterm-table-card">
+          <div class="chart-card-head">
+            <div>
+              <h3>Year-by-Year Planting Calendar</h3>
+              <p>Click any row to inspect the recommended planting week and alternatives.</p>
+            </div>
+          </div>
+
+          <div class="longterm-table-wrap">
+            <table class="longterm-table">
+              <thead>
+                <tr>
+                  <th>Year</th>
+                  <th>Best Week</th>
+                  <th>Actual Week Range</th>
+                  <th>Approx. Month</th>
+                  <th class="lt-compatibility-col">Compatibility</th>
+                  <th>Risk Level</th>
+                </tr>
+              </thead>
+              <tbody id="longterm-table-body">
+                <tr>
+                  <td colspan="6">No long-term planting forecast generated yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- /forecast-longterm-panel -->
   </section>
 
   <!-- ══════════ TAB: TERRAIN ══════════ -->
@@ -522,6 +852,23 @@
         <h1 class="page-title">3D Terrain &amp; Topographic Analysis</h1>
         <p class="page-desc">Interactive 3D elevation model, soil scoring, and terrain-adjusted yield estimation</p>
       </div>
+    </div>
+
+    <div class="analysis-subtab-row">
+      <button class="analysis-subtab-btn active" data-sub-parent="terrain" data-sub-target="terrain-3d"
+        onclick="switchAnalysisSubtab('terrain', 'terrain-3d')">
+        3-Dimensional Terrain Analysis
+      </button>
+
+      <button class="analysis-subtab-btn" data-sub-parent="terrain" data-sub-target="terrain-water"
+        onclick="switchAnalysisSubtab('terrain', 'terrain-water')">
+        Irrigation and Water Bodies
+      </button>
+
+      <button class="analysis-subtab-btn" data-sub-parent="terrain" data-sub-target="terrain-fertilizer"
+        onclick="switchAnalysisSubtab('terrain', 'terrain-fertilizer')">
+        Soil and Fertilizer Recommendation
+      </button>
     </div>
 
     <div class="terrain-layout">
@@ -600,6 +947,9 @@
             <div id="toi-elev">Elevation: —</div>
             <div id="toi-slope">Slope: —</div>
             <div id="toi-aspect">Aspect: —</div>
+            <div id="toi-range">Range: —</div>
+            <div id="toi-source">DEM Source: —</div>
+            <div id="toi-water">Water overlay: —</div>
           </div>
           <div class="terrain-compass" id="terrain-compass">
             <div class="compass-n">N</div>
@@ -727,367 +1077,419 @@
             </div>
           </div>
         </div>
+      </div><!-- /water-analyzer-section -->
+      <!-- Analysis Scores -->
+      <div id="terrain-scores" class="terrain-scores hidden">
+        <div class="scores-header">
+          <h3 class="chart-title">Terrain Analysis Results</h3>
+          <p class="chart-hint" id="terrain-location-label"></p>
+        </div>
 
-        <!-- Analysis Scores -->
-        <div id="terrain-scores" class="terrain-scores hidden">
-          <div class="scores-header">
-            <h3 class="chart-title">Terrain Analysis Results</h3>
-            <p class="chart-hint" id="terrain-location-label"></p>
+        <div class="score-cards-grid">
+          <div class="score-card">
+            <div class="score-ring-wrap">
+              <svg class="score-ring" viewBox="0 0 80 80">
+                <circle class="ring-bg" cx="40" cy="40" r="32" />
+                <circle class="ring-fill topo-ring" cx="40" cy="40" r="32" id="topo-ring-fill" />
+              </svg>
+              <div class="score-ring-val" id="topo-score-val">—</div>
+            </div>
+            <div class="score-card-label">Topography Score</div>
+            <div class="score-card-sub" id="topo-score-sub">Evaluating terrain suitability</div>
           </div>
-
-          <div class="score-cards-grid">
-            <div class="score-card">
-              <div class="score-ring-wrap">
-                <svg class="score-ring" viewBox="0 0 80 80">
-                  <circle class="ring-bg" cx="40" cy="40" r="32" />
-                  <circle class="ring-fill topo-ring" cx="40" cy="40" r="32" id="topo-ring-fill" />
-                </svg>
-                <div class="score-ring-val" id="topo-score-val">—</div>
-              </div>
-              <div class="score-card-label">Topography Score</div>
-              <div class="score-card-sub" id="topo-score-sub">Evaluating terrain suitability</div>
+          <div class="score-card">
+            <div class="score-ring-wrap">
+              <svg class="score-ring" viewBox="0 0 80 80">
+                <circle class="ring-bg" cx="40" cy="40" r="32" />
+                <circle class="ring-fill yield-ring" cx="40" cy="40" r="32" id="yield-ring-fill" />
+              </svg>
+              <div class="score-ring-val" id="yield-impact-val">—</div>
             </div>
-            <div class="score-card">
-              <div class="score-ring-wrap">
-                <svg class="score-ring" viewBox="0 0 80 80">
-                  <circle class="ring-bg" cx="40" cy="40" r="32" />
-                  <circle class="ring-fill yield-ring" cx="40" cy="40" r="32" id="yield-ring-fill" />
-                </svg>
-                <div class="score-ring-val" id="yield-impact-val">—</div>
-              </div>
-              <div class="score-card-label">Yield Impact Score</div>
-              <div class="score-card-sub" id="yield-impact-sub">Calculating terrain effects</div>
-            </div>
-            <div class="score-card final-score-card">
-              <div class="final-score-icon">🌾</div>
-              <div class="final-score-label">Terrain-Adjusted Yield</div>
-              <div class="final-score-val" id="final-yield-val">— t/ha</div>
-              <div class="final-score-base" id="final-yield-base">Base: — t/ha</div>
-              <div class="final-score-modifier" id="final-yield-mod">Modifier: —%</div>
-            </div>
+            <div class="score-card-label">Yield Impact Score</div>
+            <div class="score-card-sub" id="yield-impact-sub">Calculating terrain effects</div>
           </div>
-
-          <!-- Detailed metrics -->
-          <div class="terrain-metrics-grid">
-            <div class="card metric-card">
-              <h4 class="metric-title">⛰️ Elevation Profile</h4>
-              <div class="metric-rows" id="elev-metrics"></div>
-            </div>
-            <div class="card metric-card">
-              <h4 class="metric-title">📐 Slope Analysis</h4>
-              <div class="metric-rows" id="slope-metrics"></div>
-            </div>
-            <div class="card metric-card">
-              <h4 class="metric-title">🧱 Soil &amp; Drainage</h4>
-              <div class="metric-rows" id="soil-metrics"></div>
-            </div>
-            <div class="card metric-card">
-              <h4 class="metric-title">💧 Irrigation Potential</h4>
-              <div class="metric-rows" id="irrigation-metrics"></div>
-            </div>
-          </div>
-          <!-- Terrain chart -->
-          <div class="card chart-card">
-            <div class="chart-header">
-              <h3 class="chart-title">Elevation Cross-Section Profile</h3>
-            </div>
-            <div class="chart-wrap"><canvas id="terrainProfileChart"></canvas></div>
+          <div class="score-card final-score-card">
+            <div class="final-score-icon">🌾</div>
+            <div class="final-score-label">Terrain-Adjusted Yield</div>
+            <div class="final-score-val" id="final-yield-val">— t/ha</div>
+            <div class="final-score-base" id="final-yield-base">Base: — t/ha</div>
+            <div class="final-score-modifier" id="final-yield-mod">Modifier: —%</div>
           </div>
         </div>
 
-        <!-- ══════════════════════════════════════════════════
+        <!-- Detailed metrics -->
+        <div class="terrain-metrics-grid">
+          <div class="card metric-card">
+            <h4 class="metric-title">⛰️ Elevation Profile</h4>
+            <div class="metric-rows" id="elev-metrics"></div>
+          </div>
+          <div class="card metric-card">
+            <h4 class="metric-title">📐 Slope Analysis</h4>
+            <div class="metric-rows" id="slope-metrics"></div>
+          </div>
+          <div class="card metric-card">
+            <h4 class="metric-title">🧱 Soil &amp; Drainage</h4>
+            <div class="metric-rows" id="soil-metrics"></div>
+          </div>
+          <div class="card metric-card">
+            <h4 class="metric-title">💧 Irrigation Potential</h4>
+            <div class="metric-rows" id="irrigation-metrics"></div>
+          </div>
+        </div>
+        <!-- Terrain chart -->
+        <div class="card chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">Elevation Cross-Section Profile</h3>
+          </div>
+          <div class="chart-wrap"><canvas id="terrainProfileChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════
            SPATIOTEMPORAL ANALYSIS SECTION
            ══════════════════════════════════════════════════ -->
-        <div id="spatio-section" class="spatio-section hidden">
+      <!-- ══════════════════════════════════════════════════
+     SPATIOTEMPORAL FARM CONDITION DASHBOARD
+     ══════════════════════════════════════════════════ -->
+      <div id="spatio-section" class="spatio-section spatio-section-v2 hidden">
 
-          <!-- Header -->
-          <div class="spatio-header">
-            <div class="spatio-header-left">
-              <div class="spatio-eyebrow">🛰️ Satellite-Grade Analysis</div>
-              <h2 class="spatio-title">Spatio-Temporal Land Analysis</h2>
-              <p class="spatio-desc">
-                NDVI · LST · EVI computed from 2015–2025 quarterly field climate records.
-                Seasonal composites, decadal trends, and yield adjustment — no satellite imagery required.
-              </p>
+        <!-- Header -->
+        <div class="spatio-v2-hero">
+          <div class="spatio-v2-hero-left">
+            <div class="spatio-eyebrow">🌾 Climate-Based Farm Condition Dashboard</div>
+            <h2 class="spatio-title">Spatio-Temporal Farm Condition Analysis</h2>
+            <p class="spatio-desc">
+              A climate- and terrain-based assessment of seasonal land health, heat stress,
+              vegetation stability, and estimated yield impact for the selected farm area.
+            </p>
+            <p class="spatio-note">
+              Note: NDVI, EVI, and LST values shown here are climate-based proxy indicators,
+              not direct satellite-image measurements.
+            </p>
+          </div>
+
+          <div class="spatio-v2-hero-right">
+            <div class="spatio-adj-badge" id="spatio-adj-badge">
+              <div class="sab-label">Estimated Yield Effect</div>
+              <div class="sab-value" id="spatio-adj-val">—</div>
+              <div class="sab-sub" id="spatio-adj-dir">—</div>
             </div>
-            <div class="spatio-header-right">
-              <div class="spatio-adj-badge" id="spatio-adj-badge">
-                <div class="sab-label">Yield Adjustment</div>
-                <div class="sab-value" id="spatio-adj-val">—</div>
-                <div class="sab-sub" id="spatio-adj-dir">—</div>
-              </div>
+          </div>
+        </div>
+
+        <!-- Decision Summary Cards -->
+        <div class="spatio-decision-grid">
+          <div class="spatio-decision-card primary">
+            <div class="sdc-icon">🌿</div>
+            <div>
+              <div class="sdc-label">Land Health Score</div>
+              <div class="sdc-value" id="smc-stability">—</div>
+              <div class="sdc-sub" id="st-health-label">Based on vegetation stability</div>
             </div>
           </div>
 
-          <!-- ── 6-Panel Grid (like the reference image) ── -->
-          <div class="spatio-panel-grid">
+          <div class="spatio-decision-card">
+            <div class="sdc-icon">📈</div>
+            <div>
+              <div class="sdc-label">Seasonal Trend</div>
+              <div class="sdc-value small" id="smc-trend">—</div>
+              <div class="sdc-sub" id="st-trend-note">2015–2025 condition movement</div>
+            </div>
+          </div>
 
-            <!-- Panel 1: NDVI Pre-monsoon -->
-            <div class="spatio-panel" id="sp-ndvi-pre">
-              <div class="sp-label">NDVI — Pre-Monsoon (Q1–Q2)</div>
-              <canvas class="sp-canvas" id="spCanvas-ndvi-pre"></canvas>
-              <div class="sp-footer">
-                <span class="sp-val" id="sp-val-ndvi-pre">—</span>
-                <span class="sp-scale">
-                  <span class="sp-tick red"></span>0
-                  <span class="sp-tick yellow"></span>0.4
-                  <span class="sp-tick green"></span>0.8+
-                </span>
+          <div class="spatio-decision-card">
+            <div class="sdc-icon">⚠️</div>
+            <div>
+              <div class="sdc-label">Main Limiting Factor</div>
+              <div class="sdc-value small" id="st-main-stress">—</div>
+              <div class="sdc-sub" id="st-main-stress-note">Detected from heat, moisture, and stability</div>
+            </div>
+          </div>
+
+          <div class="spatio-decision-card">
+            <div class="sdc-icon">🗓️</div>
+            <div>
+              <div class="sdc-label">Recommended Season</div>
+              <div class="sdc-value small" id="st-season">—</div>
+              <div class="sdc-sub" id="st-season-note">Based on seasonal vegetation proxy</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Visual Dashboard -->
+        <div class="spatio-v2-layout">
+
+          <!-- Farm Health Map -->
+          <div class="spatio-v2-card spatio-map-card">
+            <div class="spatio-v2-card-head">
+              <div>
+                <h3>Farm Health Distribution</h3>
+                <p>Overall condition pattern from vegetation proxy and seasonal stability.</p>
               </div>
+              <span class="spatio-pill green" id="sp-val-ndvi-post">—</span>
             </div>
 
-            <!-- Panel 2: NDVI Post-monsoon -->
-            <div class="spatio-panel" id="sp-ndvi-post">
-              <div class="sp-label">NDVI — Post-Monsoon (Q3–Q4)</div>
+            <div class="spatio-canvas-shell">
               <canvas class="sp-canvas" id="spCanvas-ndvi-post"></canvas>
-              <div class="sp-footer">
-                <span class="sp-val" id="sp-val-ndvi-post">—</span>
-                <span class="sp-scale">
-                  <span class="sp-tick red"></span>0
-                  <span class="sp-tick yellow"></span>0.4
-                  <span class="sp-tick green"></span>0.8+
-                </span>
-              </div>
+              <div class="spatio-scanline"></div>
             </div>
 
-            <!-- Panel 3: True Color Composite (EVI) -->
-            <div class="spatio-panel" id="sp-evi">
-              <div class="sp-label">EVI — Enhanced Vegetation Index</div>
-              <canvas class="sp-canvas" id="spCanvas-evi"></canvas>
-              <div class="sp-footer">
-                <span class="sp-val" id="sp-val-evi">—</span>
-                <span class="sp-scale">
-                  <span class="sp-tick brown"></span>Low
-                  <span class="sp-tick lime"></span>High
-                </span>
+            <div class="spatio-v2-legend">
+              <span><i class="legend-red"></i> Stressed</span>
+              <span><i class="legend-yellow"></i> Moderate</span>
+              <span><i class="legend-green"></i> Healthy</span>
+            </div>
+          </div>
+
+          <!-- Seasonal Comparison -->
+          <div class="spatio-v2-card">
+            <div class="spatio-v2-card-head">
+              <div>
+                <h3>Seasonal Improvement Map</h3>
+                <p>Change between pre-monsoon and post-monsoon condition.</p>
               </div>
+              <span class="spatio-pill" id="sp-val-delta">—</span>
             </div>
 
-            <!-- Panel 4: LST Pre-monsoon -->
-            <div class="spatio-panel" id="sp-lst-pre">
-              <div class="sp-label">LST — Pre-Monsoon (°C)</div>
-              <canvas class="sp-canvas" id="spCanvas-lst-pre"></canvas>
-              <div class="sp-footer">
-                <span class="sp-val" id="sp-val-lst-pre">—</span>
-                <span class="sp-scale">
-                  <span class="sp-tick blue"></span>20°C
-                  <span class="sp-tick yellow"></span>32°C
-                  <span class="sp-tick red"></span>42°C
-                </span>
-              </div>
-            </div>
-
-            <!-- Panel 5: LST Post-monsoon -->
-            <div class="spatio-panel" id="sp-lst-post">
-              <div class="sp-label">LST — Post-Monsoon (°C)</div>
-              <canvas class="sp-canvas" id="spCanvas-lst-post"></canvas>
-              <div class="sp-footer">
-                <span class="sp-val" id="sp-val-lst-post">—</span>
-                <span class="sp-scale">
-                  <span class="sp-tick blue"></span>20°C
-                  <span class="sp-tick yellow"></span>32°C
-                  <span class="sp-tick red"></span>42°C
-                </span>
-              </div>
-            </div>
-
-            <!-- Panel 6: NDVI Change / Delta -->
-            <div class="spatio-panel" id="sp-delta">
-              <div class="sp-label">NDVI Δ Change (Pre → Post)</div>
+            <div class="spatio-canvas-shell">
               <canvas class="sp-canvas" id="spCanvas-delta"></canvas>
-              <div class="sp-footer">
-                <span class="sp-val" id="sp-val-delta">—</span>
-                <span class="sp-scale">
-                  <span class="sp-tick red"></span>−0.4
-                  <span class="sp-tick white"></span>0
-                  <span class="sp-tick green"></span>+0.4
-                </span>
-              </div>
+              <div class="spatio-scanline"></div>
             </div>
 
-          </div>
-
-          <!-- ── Index Metrics Row ── -->
-          <div class="spatio-metrics-row">
-            <div class="card spatio-metric-card">
-              <div class="smc-icon">🌿</div>
-              <div class="smc-label">Vegetation Class</div>
-              <div class="smc-val" id="smc-veg-class">—</div>
-            </div>
-            <div class="card spatio-metric-card">
-              <div class="smc-icon">🌡️</div>
-              <div class="smc-label">Heat Stress Class</div>
-              <div class="smc-val" id="smc-lst-class">—</div>
-            </div>
-            <div class="card spatio-metric-card">
-              <div class="smc-icon">📈</div>
-              <div class="smc-label">NDVI Trend (10-yr)</div>
-              <div class="smc-val" id="smc-trend">—</div>
-            </div>
-            <div class="card spatio-metric-card">
-              <div class="smc-icon">🎯</div>
-              <div class="smc-label">Stability Score</div>
-              <div class="smc-val" id="smc-stability">—</div>
-            </div>
-            <div class="card spatio-metric-card">
-              <div class="smc-icon">💧</div>
-              <div class="smc-label">Irrigation Dependency</div>
-              <div class="smc-val" id="smc-irrig">—</div>
-            </div>
-            <div class="card spatio-metric-card highlight-card">
-              <div class="smc-icon">⚡</div>
-              <div class="smc-label">Heat Stress Index</div>
-              <div class="smc-val" id="smc-heat">—</div>
+            <div class="spatio-v2-legend">
+              <span><i class="legend-red"></i> Decline</span>
+              <span><i class="legend-white"></i> Stable</span>
+              <span><i class="legend-green"></i> Improved</span>
             </div>
           </div>
 
-          <!-- ── Time-series Charts Row ── -->
-          <div class="spatio-charts-row">
-            <div class="card chart-card spatio-chart-card">
-              <div class="chart-header">
-                <h3 class="chart-title">Annual NDVI Trend (2015–2025)</h3>
-                <span class="chart-hint" id="spatio-ndvi-trend-label">—</span>
+          <!-- Stress Distribution -->
+          <div class="spatio-v2-card">
+            <div class="spatio-v2-card-head">
+              <div>
+                <h3>Heat Stress Distribution</h3>
+                <p>Estimated land heat stress pattern from climate proxy values.</p>
               </div>
-              <div class="chart-wrap"><canvas id="spatioNdviChart"></canvas></div>
+              <span class="spatio-pill orange" id="sp-val-lst-pre">—</span>
             </div>
-            <div class="card chart-card spatio-chart-card">
-              <div class="chart-header">
-                <h3 class="chart-title">Land Surface Temperature Trend</h3>
-                <span class="chart-hint" id="spatio-lst-trend-label">—</span>
-              </div>
-              <div class="chart-wrap"><canvas id="spatioLstChart"></canvas></div>
+
+            <div class="spatio-canvas-shell">
+              <canvas class="sp-canvas" id="spCanvas-lst-pre"></canvas>
+              <div class="spatio-scanline"></div>
+            </div>
+
+            <div class="spatio-v2-legend">
+              <span><i class="legend-blue"></i> Cool</span>
+              <span><i class="legend-yellow"></i> Warm</span>
+              <span><i class="legend-red"></i> Hot</span>
             </div>
           </div>
 
-          <!-- ── NDVI Seasonal Heatmap ── -->
-          <div class="card chart-card">
+        </div>
+
+        <!-- Proxy Metrics -->
+        <div class="spatio-metrics-row spatio-v2-metrics">
+          <div class="card spatio-metric-card">
+            <div class="smc-icon">🌿</div>
+            <div class="smc-label">Vegetation Class</div>
+            <div class="smc-val" id="smc-veg-class">—</div>
+          </div>
+
+          <div class="card spatio-metric-card">
+            <div class="smc-icon">🌡️</div>
+            <div class="smc-label">Heat Stress Class</div>
+            <div class="smc-val" id="smc-lst-class">—</div>
+          </div>
+
+          <div class="card spatio-metric-card">
+            <div class="smc-icon">💧</div>
+            <div class="smc-label">Irrigation Dependency</div>
+            <div class="smc-val" id="smc-irrig">—</div>
+          </div>
+
+          <div class="card spatio-metric-card highlight-card">
+            <div class="smc-icon">⚡</div>
+            <div class="smc-label">Heat Stress Index</div>
+            <div class="smc-val" id="smc-heat">—</div>
+          </div>
+        </div>
+
+        <!-- AI Interpretation -->
+        <div class="spatio-ai-card">
+          <div class="spatio-ai-icon">🤖</div>
+          <div>
+            <h3>PAL-AI Interpretation</h3>
+            <p id="spatio-ai-interpretation">
+              Generate terrain analysis to display farm condition interpretation.
+            </p>
+            <div class="spatio-action-list" id="spatio-action-list">
+              <span>Recommended actions will appear here.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Time-series Charts Row -->
+        <div class="spatio-charts-row">
+          <div class="card chart-card spatio-chart-card">
             <div class="chart-header">
-              <h3 class="chart-title">NDVI Seasonal Heatmap (Year × Quarter)</h3>
-              <span class="chart-hint">Darker green = higher vegetation activity</span>
+              <h3 class="chart-title">Vegetation Proxy Trend 2015–2025</h3>
+              <span class="chart-hint" id="spatio-ndvi-trend-label">—</span>
             </div>
-            <div id="spatio-heatmap-wrap" class="spatio-heatmap-wrap"></div>
-          </div>
-
-          <!-- ── Final Adjusted Score Banner ── -->
-          <div class="spatio-final-banner" id="spatio-final-banner">
-            <div class="sfb-col">
-              <div class="sfb-label">Terrain Suitability Score</div>
-              <div class="sfb-val" id="sfb-terrain-score">—</div>
-              <div class="sfb-sub">from topography analysis</div>
-            </div>
-            <div class="sfb-arrow">+</div>
-            <div class="sfb-col">
-              <div class="sfb-label">Spatiotemporal Δ</div>
-              <div class="sfb-val" id="sfb-spatio-delta">—</div>
-              <div class="sfb-sub">from vegetation & heat analysis</div>
-            </div>
-            <div class="sfb-arrow">=</div>
-            <div class="sfb-col highlight">
-              <div class="sfb-label">Final Suitability Score</div>
-              <div class="sfb-val" id="sfb-final-score">—</div>
-              <div class="sfb-sub">terrain + spatiotemporal combined</div>
-            </div>
-            <div class="sfb-divider"></div>
-            <div class="sfb-col">
-              <div class="sfb-label">XGBoost Base Yield</div>
-              <div class="sfb-val" id="sfb-base-yield">—</div>
-              <div class="sfb-sub">t/ha from climate model</div>
-            </div>
-            <div class="sfb-arrow">×</div>
-            <div class="sfb-col">
-              <div class="sfb-label">Terrain × Vegetation</div>
-              <div class="sfb-val" id="sfb-combined-mod">—</div>
-              <div class="sfb-sub">combined modifier</div>
-            </div>
-            <div class="sfb-arrow">=</div>
-            <div class="sfb-col highlight">
-              <div class="sfb-label">🌾 Final Yield Estimate</div>
-              <div class="sfb-val green" id="sfb-final-yield">— t/ha</div>
-              <div class="sfb-sub">fully adjusted prediction</div>
+            <div class="chart-wrap">
+              <canvas id="spatioNdviChart"></canvas>
             </div>
           </div>
 
-        </div><!-- /spatio-section -->
+          <div class="card chart-card spatio-chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">Land Heat Stress Trend</h3>
+              <span class="chart-hint" id="spatio-lst-trend-label">—</span>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="spatioLstChart"></canvas>
+            </div>
+          </div>
+        </div>
 
-        <!-- ══════════════════════════════════════════════════
+        <!-- Seasonal Heatmap Table -->
+        <div class="card chart-card spatio-v2-table-card">
+          <div class="chart-header">
+            <h3 class="chart-title">Seasonal Vegetation Proxy Heatmap</h3>
+            <span class="chart-hint">Year × Quarter pattern, 2015–2025</span>
+          </div>
+          <div id="spatio-heatmap-wrap" class="spatio-heatmap-wrap"></div>
+        </div>
+
+        <!-- Final Adjusted Score Banner -->
+        <div class="spatio-final-banner" id="spatio-final-banner">
+          <div class="sfb-col">
+            <div class="sfb-label">Terrain Suitability Score</div>
+            <div class="sfb-val" id="sfb-terrain-score">—</div>
+            <div class="sfb-sub">from topography analysis</div>
+          </div>
+
+          <div class="sfb-arrow">+</div>
+
+          <div class="sfb-col">
+            <div class="sfb-label">Farm Condition Δ</div>
+            <div class="sfb-val" id="sfb-spatio-delta">—</div>
+            <div class="sfb-sub">from vegetation and heat proxy</div>
+          </div>
+
+          <div class="sfb-arrow">=</div>
+
+          <div class="sfb-col highlight">
+            <div class="sfb-label">Final Suitability Score</div>
+            <div class="sfb-val" id="sfb-final-score">—</div>
+            <div class="sfb-sub">terrain + condition combined</div>
+          </div>
+
+          <div class="sfb-divider"></div>
+
+          <div class="sfb-col">
+            <div class="sfb-label">XGBoost Base Yield</div>
+            <div class="sfb-val" id="sfb-base-yield">—</div>
+            <div class="sfb-sub">t/ha from climate model</div>
+          </div>
+
+          <div class="sfb-arrow">×</div>
+
+          <div class="sfb-col">
+            <div class="sfb-label">Terrain × Farm Condition</div>
+            <div class="sfb-val" id="sfb-combined-mod">—</div>
+            <div class="sfb-sub">combined modifier</div>
+          </div>
+
+          <div class="sfb-arrow">=</div>
+
+          <div class="sfb-col highlight">
+            <div class="sfb-label">🌾 Final Yield Estimate</div>
+            <div class="sfb-val green" id="sfb-final-yield">— t/ha</div>
+            <div class="sfb-sub">fully adjusted prediction</div>
+          </div>
+        </div>
+
+      </div><!-- /spatio-section -->
+
+      <!-- ══════════════════════════════════════════════════
            FERTILIZER COMPATIBILITY ANALYSIS SECTION
            ══════════════════════════════════════════════════ -->
-        <div id="fertilizer-analysis-section" class="fertilizer-analysis-section hidden">
-          <div class="fertilizer-analysis-card">
+      <div id="fertilizer-analysis-section" class="fertilizer-analysis-section hidden">
+        <div class="fertilizer-analysis-card">
 
-            <!-- Header -->
-            <div class="fertilizer-header">
-              <div class="fertilizer-header-left">
-                <div class="fertilizer-eyebrow">🧪 Terrain-Informed Analysis</div>
-                <h2 class="fertilizer-title">Fertilizer Compatibility Analysis</h2>
-                <p class="fertilizer-desc">
-                  Terrain-Informed Fertilizer Compatibility Analysis for Rice Production.
-                  Evaluates fertilizer suitability using inferred soil indicators, crop-specific nutrient demand, pH,
-                  slope, and irrigation.
-                </p>
-              </div>
-              <div class="fertilizer-best-badge" id="fertilizer-best-badge">
-                <div class="fertilizer-badge-label">Best Match</div>
-                <div class="fertilizer-best-name" id="fertilizer-best-name">—</div>
-                <div class="fertilizer-best-score" id="fertilizer-best-score">—</div>
-              </div>
+          <!-- Header -->
+          <div class="fertilizer-header">
+            <div class="fertilizer-header-left">
+              <div class="fertilizer-eyebrow">🧪 Terrain-Informed Analysis</div>
+              <h2 class="fertilizer-title">Fertilizer Compatibility Analysis</h2>
+              <p class="fertilizer-desc">
+                Terrain-Informed Fertilizer Compatibility Analysis for Rice Production.
+                Evaluates fertilizer suitability using inferred soil indicators, crop-specific nutrient demand, pH,
+                slope, and irrigation.
+              </p>
             </div>
-
-            <!-- Best fertilizer highlight -->
-            <div class="fertilizer-best-panel" id="fertilizer-best-panel">
-              <div class="fertilizer-best-inner">
-                <div class="fertilizer-score-ring" id="fertilizer-score-ring">
-                  <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
-                    <circle class="fsr-bg" cx="40" cy="40" r="32" />
-                    <circle class="fsr-fill" cx="40" cy="40" r="32" id="fsr-fill-circle" />
-                  </svg>
-                  <div class="fsr-val" id="fsr-val">—</div>
-                </div>
-                <div class="fertilizer-best-info">
-                  <div class="fertilizer-best-label">🏆 Highest Compatibility</div>
-                  <div class="fertilizer-best-name-lg" id="fertilizer-best-name-lg">—</div>
-                  <div class="fertilizer-best-reason" id="fertilizer-best-reason">—</div>
-                </div>
-              </div>
+            <div class="fertilizer-best-badge" id="fertilizer-best-badge">
+              <div class="fertilizer-badge-label">Best Match</div>
+              <div class="fertilizer-best-name" id="fertilizer-best-name">—</div>
+              <div class="fertilizer-best-score" id="fertilizer-best-score">—</div>
             </div>
-
-            <!-- Insight grid -->
-            <div class="fertilizer-insight-grid">
-              <div class="fertilizer-insight-card">
-                <div class="fic-label">🌾 Crop Type</div>
-                <div class="fic-val" id="fertilizer-crop-type">—</div>
-              </div>
-              <div class="fertilizer-insight-card">
-                <div class="fic-label">🧱 Inferred Soil</div>
-                <div class="fic-val" id="fertilizer-soil-type">—</div>
-              </div>
-              <div class="fertilizer-insight-card">
-                <div class="fic-label">⚗️ pH Condition</div>
-                <div class="fic-val" id="fertilizer-ph-condition">—</div>
-              </div>
-              <div class="fertilizer-insight-card">
-                <div class="fic-label">🌱 Primary Need</div>
-                <div class="fic-val" id="fertilizer-main-need">—</div>
-              </div>
-            </div>
-
-            <!-- Fertilizer cards grid -->
-            <div class="fertilizer-card-grid" id="fertilizer-card-grid">
-              <!-- Populated by renderFertilizerAnalysis() -->
-            </div>
-
-            <!-- Scientific disclaimer -->
-            <div class="fertilizer-warning">
-              <span class="fertilizer-warning-icon">⚠️</span>
-              <span>This is a compatibility analysis based on terrain-inferred soil indicators, not a laboratory soil
-                test. Use it for planning support only. Exact fertilizer rates should still be verified through soil
-                testing or local agricultural guidance.</span>
-            </div>
-
           </div>
-        </div><!-- /fertilizer-analysis-section -->
 
-      </div>
+          <!-- Best fertilizer highlight -->
+          <div class="fertilizer-best-panel" id="fertilizer-best-panel">
+            <div class="fertilizer-best-inner">
+              <div class="fertilizer-score-ring" id="fertilizer-score-ring">
+                <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+                  <circle class="fsr-bg" cx="40" cy="40" r="32" />
+                  <circle class="fsr-fill" cx="40" cy="40" r="32" id="fsr-fill-circle" />
+                </svg>
+                <div class="fsr-val" id="fsr-val">—</div>
+              </div>
+              <div class="fertilizer-best-info">
+                <div class="fertilizer-best-label">🏆 Highest Compatibility</div>
+                <div class="fertilizer-best-name-lg" id="fertilizer-best-name-lg">—</div>
+                <div class="fertilizer-best-reason" id="fertilizer-best-reason">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Insight grid -->
+          <div class="fertilizer-insight-grid">
+            <div class="fertilizer-insight-card">
+              <div class="fic-label">🌾 Crop Type</div>
+              <div class="fic-val" id="fertilizer-crop-type">—</div>
+            </div>
+            <div class="fertilizer-insight-card">
+              <div class="fic-label">🧱 Inferred Soil</div>
+              <div class="fic-val" id="fertilizer-soil-type">—</div>
+            </div>
+            <div class="fertilizer-insight-card">
+              <div class="fic-label">⚗️ pH Condition</div>
+              <div class="fic-val" id="fertilizer-ph-condition">—</div>
+            </div>
+            <div class="fertilizer-insight-card">
+              <div class="fic-label">🌱 Primary Need</div>
+              <div class="fic-val" id="fertilizer-main-need">—</div>
+            </div>
+          </div>
+
+          <!-- Fertilizer cards grid -->
+          <div class="fertilizer-card-grid" id="fertilizer-card-grid">
+            <!-- Populated by renderFertilizerAnalysis() -->
+          </div>
+
+          <!-- Scientific disclaimer -->
+          <div class="fertilizer-warning">
+            <span class="fertilizer-warning-icon">⚠️</span>
+            <span>This is a compatibility analysis based on terrain-inferred soil indicators, not a laboratory soil
+              test. Use it for planning support only. Exact fertilizer rates should still be verified through soil
+              testing or local agricultural guidance.</span>
+          </div>
+
+        </div>
+      </div><!-- /fertilizer-analysis-section -->
+
+    </div>
   </section>
 
   <!-- ══════════ TAB: CALCULATOR ══════════ -->
@@ -1186,6 +1588,277 @@
     </div>
   </section>
 
+  <!-- ══════════ TAB: ABOUT ══════════ -->
+  <section id="tab-about" class="tab-section">
+    <div class="about-page">
+
+      <!-- About Hero -->
+      <div class="about-hero">
+        <div class="about-hero-grid"></div>
+
+        <div class="about-orbit about-orbit-1"></div>
+        <div class="about-orbit about-orbit-2"></div>
+        <div class="about-orbit about-orbit-3"></div>
+
+        <div class="about-hero-content">
+          <div class="about-eyebrow">
+            <span class="about-live-dot"></span>
+            PAL-AI Project Evolution
+          </div>
+
+          <h1 class="about-title">
+            From Forecasting Algorithm<br>
+            to Full Precision Agriculture Intelligence
+          </h1>
+
+          <p class="about-subtitle">
+            PAL-AI is a layered agri-tech decision support platform designed to help rice farmers understand future
+            yield,
+            farm terrain, irrigation potential, fertilizer compatibility, and pest outbreak risk through AI-assisted
+            analytics.
+          </p>
+
+          <div class="about-hero-actions">
+            <button class="about-primary-btn" onclick="aboutJumpToTimeline()">
+              Explore Timeline
+            </button>
+            <button class="about-secondary-btn" onclick="switchTab('forecast')">
+              Start Using PAL-AI
+            </button>
+          </div>
+        </div>
+
+        <div class="about-hero-panel">
+          <div class="about-system-card">
+            <div class="about-system-ring">
+              <span>AI</span>
+            </div>
+            <div>
+              <div class="about-system-label">Current System</div>
+              <div class="about-system-title">PAL-AI 2026</div>
+              <div class="about-system-desc">
+                Forecasting, terrain, water, fertilizer, pest analytics, and PALADIN assistance in one agricultural
+                intelligence platform.
+              </div>
+            </div>
+          </div>
+
+          <div class="about-mini-metrics">
+            <div>
+              <strong>3</strong>
+              <span>Years</span>
+            </div>
+            <div>
+              <strong>5+</strong>
+              <span>Core Modules</span>
+            </div>
+            <div>
+              <strong>AI</strong>
+              <span>Decision Support</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- What PAL-AI Does -->
+      <div class="about-section about-overview-section">
+        <div class="about-section-head">
+          <div class="about-section-kicker">Platform Overview</div>
+          <h2>What the Website Does</h2>
+          <p>
+            PAL-AI combines machine learning, climate trend processing, open-source satellite terrain data, and risk
+            modeling into one farmer-facing web system. Each module focuses on a different decision layer of rice
+            production.
+          </p>
+        </div>
+
+        <div class="about-function-grid">
+          <div class="about-function-card" style="--delay:0s">
+            <div class="af-icon">📈</div>
+            <h3>Rice Yield Forecasting</h3>
+            <p>
+              Uses climate variables and machine learning to estimate rice yield and long-range production trends.
+            </p>
+          </div>
+
+          <div class="about-function-card" style="--delay:.05s">
+            <div class="af-icon">🛰️</div>
+            <h3>3D Farm Site Analysis</h3>
+            <p>
+              Converts elevation data into a 3D terrain model with slope, aspect, suitability, and cross-section
+              analysis.
+            </p>
+          </div>
+
+          <div class="about-function-card" style="--delay:.1s">
+            <div class="af-icon">💧</div>
+            <h3>Irrigation and Water Bodies</h3>
+            <p>
+              Detects nearby mapped rivers, streams, reservoirs, ponds, and water features for irrigation planning.
+            </p>
+          </div>
+
+          <div class="about-function-card" style="--delay:.15s">
+            <div class="af-icon">🌱</div>
+            <h3>Soil and Fertilizer Recommendation</h3>
+            <p>
+              Scores fertilizer compatibility using terrain-inferred soil indicators, crop type, and agronomic factors.
+            </p>
+          </div>
+
+          <div class="about-function-card" style="--delay:.2s">
+            <div class="af-icon">🐛</div>
+            <h3>Pest Outbreak Analysis</h3>
+            <p>
+              Simulates pest outbreak vulnerability using Bayesian-style risk scoring, heatmaps, and pest-specific
+              cards.
+            </p>
+          </div>
+
+          <div class="about-function-card" style="--delay:.25s">
+            <div class="af-icon">🛡️</div>
+            <h3>PALADIN Assistant</h3>
+            <p>
+              Provides AI-assisted farming explanations and image-based plant diagnosis support through a chatbot
+              window.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Timeline -->
+      <div class="about-section about-timeline-section" id="about-timeline-section">
+        <div class="about-section-head">
+          <div class="about-section-kicker">Interactive Timeline</div>
+          <h2>Three-Year Project Evolution</h2>
+          <p>
+            Move through time to see how the project evolved from a mathematical forecasting model into a complete
+            AI-powered precision agriculture system.
+          </p>
+        </div>
+
+        <div class="about-time-machine">
+
+          <div class="about-year-selector" aria-label="PAL-AI project timeline selector">
+            <button class="about-year-btn active" data-year="2024" onclick="setAboutTimelineYear('2024')">
+              <span>2024</span>
+              <small>Pioneering Phase</small>
+            </button>
+
+            <button class="about-year-btn" data-year="2025" onclick="setAboutTimelineYear('2025')">
+              <span>2025</span>
+              <small>Automation Phase</small>
+            </button>
+
+            <button class="about-year-btn" data-year="2026" onclick="setAboutTimelineYear('2026')">
+              <span>2026</span>
+              <small>Expansion Phase</small>
+            </button>
+          </div>
+
+          <div class="about-time-track">
+            <div class="about-time-line"></div>
+            <div class="about-time-progress" id="about-time-progress"></div>
+
+            <button class="about-time-node active" data-year="2024" onclick="setAboutTimelineYear('2024')">
+              <span>2024</span>
+            </button>
+
+            <button class="about-time-node" data-year="2025" onclick="setAboutTimelineYear('2025')">
+              <span>2025</span>
+            </button>
+
+            <button class="about-time-node" data-year="2026" onclick="setAboutTimelineYear('2026')">
+              <span>2026</span>
+            </button>
+          </div>
+
+          <div class="about-timeline-stage">
+            <div class="about-year-visual">
+              <div class="about-photo-shell">
+                <div class="about-photo-placeholder" id="about-photo-placeholder">
+                  <img id="about-year-photo" src="/static/assets/about/2024.jpg" alt="PAL-AI timeline photo">
+                </div>
+              </div>
+
+              <div class="about-phase-badge" id="about-phase-badge">
+                Pioneering Phase
+              </div>
+            </div>
+
+            <div class="about-year-details">
+              <div class="about-year-number" id="about-year-number">2024</div>
+              <h3 id="about-year-title">Sow Timely, Grow Primely</h3>
+              <p id="about-year-description">
+                This year was the pioneering phase of the project. It first started with only the rice yield forecasting
+                algorithm developed, with no system or website yet. It focused on mathematical models for forecasting
+                using Multiple Linear Regression.
+              </p>
+
+              <div class="about-year-meta">
+                <div>
+                  <span>Project Name</span>
+                  <strong id="about-project-name">Sow Timely, Grow Primely</strong>
+                </div>
+                <div>
+                  <span>Core Technology</span>
+                  <strong id="about-core-tech">MLR Forecasting</strong>
+                </div>
+                <div>
+                  <span>Milestone</span>
+                  <strong id="about-milestone">First NSTF Appearance</strong>
+                </div>
+              </div>
+
+              <div class="about-researchers-card">
+                <div class="about-researchers-label">Student Researchers</div>
+                <div class="about-researchers-list" id="about-researchers-list">
+                  <span>Alexander Callueng</span>
+                  <span>Febellen Rejas</span>
+                  <span>Ayman Latip</span>
+                </div>
+              </div>
+
+              <div class="about-timeline-controls">
+                <button class="about-time-control" onclick="aboutTimelinePrev()">← Previous</button>
+                <button class="about-time-control about-time-control-primary" onclick="aboutTimelineNext()">Next
+                  →</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Legacy to Future -->
+      <div class="about-section about-future-section">
+        <div class="about-future-card">
+          <div class="about-future-glow"></div>
+          <div class="about-future-content">
+            <div class="about-section-kicker">Research Continuity</div>
+            <h2>A Project Passed Forward</h2>
+            <p>
+              PAL-AI represents a continuing student-led research pathway: from early mathematical forecasting, to an
+              automated farmer website, and now toward an integrated precision agriculture intelligence system. Its
+              development reflects how student research can grow across generations while becoming more useful for real
+              agricultural decision-making.
+            </p>
+          </div>
+
+          <div class="about-future-stack">
+            <div class="about-stack-chip">Forecasting</div>
+            <div class="about-stack-chip">3D Terrain</div>
+            <div class="about-stack-chip">Water Detection</div>
+            <div class="about-stack-chip">Fertilizer Analysis</div>
+            <div class="about-stack-chip">Pest Prevention</div>
+            <div class="about-stack-chip">PALADIN AI</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <!-- ══════════ TAB: PEST RISK ══════════ -->
   <section id="tab-pest" class="tab-section">
 
@@ -1200,6 +1873,18 @@
           Field verification required before concluding an outbreak.
         </p>
       </div>
+    </div>
+
+    <div class="analysis-subtab-row pest-subtab-row">
+      <button class="analysis-subtab-btn active" data-sub-parent="pest" data-sub-target="pest-outbreak"
+        onclick="switchAnalysisSubtab('pest', 'pest-outbreak')">
+        Outbreak Analysis (Bayesian Simulation)
+      </button>
+
+      <button class="analysis-subtab-btn" data-sub-parent="pest" data-sub-target="pest-specific"
+        onclick="switchAnalysisSubtab('pest', 'pest-specific')">
+        Pest-Specific Risk Assessment
+      </button>
     </div>
 
     <div class="pest-page">
@@ -1328,181 +2013,183 @@
 
       <!-- ── Results ── -->
       <div id="pest-results" class="pest-results hidden">
-
-        <!-- Summary Cards Row -->
-        <div class="pest-risk-summary-grid">
-          <div class="pest-summary-card" id="pest-overall-card">
-            <div class="psc-label">Overall Outbreak Risk</div>
-            <div class="pest-score-large" id="pest-score-display">—</div>
-            <div class="pest-level-badge" id="pest-level-badge">—</div>
+        <div id="pest-outbreak-results-panel">
+          <!-- Summary Cards Row -->
+          <div class="pest-risk-summary-grid">
+            <div class="pest-summary-card" id="pest-overall-card">
+              <div class="psc-label">Overall Outbreak Risk</div>
+              <div class="pest-score-large" id="pest-score-display">—</div>
+              <div class="pest-level-badge" id="pest-level-badge">—</div>
+            </div>
+            <div class="pest-summary-card">
+              <div class="psc-label">Most Likely Threat</div>
+              <div class="psc-value-lg" id="pest-likely-name">—</div>
+              <div class="psc-sub" id="pest-likely-category">—</div>
+            </div>
+            <div class="pest-summary-card">
+              <div class="psc-label">Bayesian Confidence</div>
+              <div class="psc-value-lg" id="pest-confidence">—</div>
+              <div class="psc-sub">Credible interval: <span id="pest-interval">—</span></div>
+            </div>
+            <div class="pest-summary-card">
+              <div class="psc-label">Est. Yield Impact Risk</div>
+              <div class="psc-value-lg" id="pest-yield-impact">—</div>
+              <div class="psc-sub">if outbreak is not managed</div>
+            </div>
           </div>
-          <div class="pest-summary-card">
-            <div class="psc-label">Most Likely Threat</div>
-            <div class="psc-value-lg" id="pest-likely-name">—</div>
-            <div class="psc-sub" id="pest-likely-category">—</div>
-          </div>
-          <div class="pest-summary-card">
-            <div class="psc-label">Bayesian Confidence</div>
-            <div class="psc-value-lg" id="pest-confidence">—</div>
-            <div class="psc-sub">Credible interval: <span id="pest-interval">—</span></div>
-          </div>
-          <div class="pest-summary-card">
-            <div class="psc-label">Est. Yield Impact Risk</div>
-            <div class="psc-value-lg" id="pest-yield-impact">—</div>
-            <div class="psc-sub">if outbreak is not managed</div>
-          </div>
-        </div>
 
-        <!-- Summary box -->
-        <div class="pest-explain-box" id="pest-summary-box"></div>
+          <!-- Summary box -->
+          <div class="pest-explain-box" id="pest-summary-box"></div>
 
-        <!-- Pest Analytics Visualizers -->
-        <div class="pest-analytics-section">
-          <h3 class="pest-section-title">📈 Pest Outbreak Analytics</h3>
-          <p class="pest-analytics-sub">
-            Compact visual analysis of pest ranking, Bayesian uncertainty, contributing factors, seasonal timing, and
-            possible yield loss.
-          </p>
+          <!-- Pest Analytics Visualizers -->
+          <div class="pest-analytics-section">
+            <h3 class="pest-section-title">📈 Pest Outbreak Analytics</h3>
+            <p class="pest-analytics-sub">
+              Compact visual analysis of pest ranking, Bayesian uncertainty, contributing factors, seasonal timing, and
+              possible yield loss.
+            </p>
 
-          <div class="pest-chart-grid">
-            <div class="pest-chart-card card">
+            <div class="pest-chart-grid">
+              <div class="pest-chart-card card">
+                <div class="pest-chart-head">
+                  <h4>Pest Risk Ranking</h4>
+                  <span>Top threats</span>
+                </div>
+                <div class="pest-chart-small">
+                  <canvas id="pestRankingChart"></canvas>
+                </div>
+              </div>
+
+              <div class="pest-chart-card card">
+                <div class="pest-chart-head">
+                  <h4>Bayesian Credible Intervals</h4>
+                  <span>Lower–mean–upper risk</span>
+                </div>
+                <div class="pest-chart-small">
+                  <canvas id="pestIntervalChart"></canvas>
+                </div>
+              </div>
+
+              <div class="pest-chart-card card">
+                <div class="pest-chart-head">
+                  <h4>Risk Factor Contribution</h4>
+                  <span>Likely pest drivers</span>
+                </div>
+                <div class="pest-chart-small">
+                  <canvas id="pestFactorChart"></canvas>
+                </div>
+              </div>
+
+              <div class="pest-chart-card card">
+                <div class="pest-chart-head">
+                  <h4>Seasonal Pest Calendar</h4>
+                  <span>Quarterly vulnerability</span>
+                </div>
+                <div class="pest-chart-small">
+                  <canvas id="pestSeasonChart"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div class="pest-chart-card pest-chart-wide card">
               <div class="pest-chart-head">
-                <h4>Pest Risk Ranking</h4>
-                <span>Top threats</span>
+                <h4>Estimated Yield Impact Gauge</h4>
+                <span>Potential unmanaged loss level</span>
               </div>
-              <div class="pest-chart-small">
-                <canvas id="pestRankingChart"></canvas>
+              <div class="pest-chart-large">
+                <canvas id="pestYieldGaugeChart"></canvas>
               </div>
-            </div>
-
-            <div class="pest-chart-card card">
-              <div class="pest-chart-head">
-                <h4>Bayesian Credible Intervals</h4>
-                <span>Lower–mean–upper risk</span>
-              </div>
-              <div class="pest-chart-small">
-                <canvas id="pestIntervalChart"></canvas>
-              </div>
-            </div>
-
-            <div class="pest-chart-card card">
-              <div class="pest-chart-head">
-                <h4>Risk Factor Contribution</h4>
-                <span>Likely pest drivers</span>
-              </div>
-              <div class="pest-chart-small">
-                <canvas id="pestFactorChart"></canvas>
-              </div>
-            </div>
-
-            <div class="pest-chart-card card">
-              <div class="pest-chart-head">
-                <h4>Seasonal Pest Calendar</h4>
-                <span>Quarterly vulnerability</span>
-              </div>
-              <div class="pest-chart-small">
-                <canvas id="pestSeasonChart"></canvas>
+              <div class="pest-gauge-note" id="pest-gauge-note">
+                Generate pest analysis to estimate possible yield impact.
               </div>
             </div>
           </div>
 
-          <div class="pest-chart-card pest-chart-wide card">
-            <div class="pest-chart-head">
-              <h4>Estimated Yield Impact Gauge</h4>
-              <span>Potential unmanaged loss level</span>
-            </div>
-            <div class="pest-chart-large">
-              <canvas id="pestYieldGaugeChart"></canvas>
-            </div>
-            <div class="pest-gauge-note" id="pest-gauge-note">
-              Generate pest analysis to estimate possible yield impact.
-            </div>
-          </div>
-        </div>
-
-        <!-- Spatiotemporal context -->
-        <div class="pest-spatio-box card" id="pest-spatio-box">
-          <h3 class="pest-section-title">🛰️ Spatiotemporal &amp; Seasonal Context</h3>
-          <div class="pest-spatio-grid" id="pest-spatio-grid"></div>
-        </div>
-
-        <!-- Pest outbreak heatmap -->
-        <div class="pest-heatmap-box card" id="pest-heatmap-box">
-          <div class="pest-heatmap-header">
-            <div>
-              <h3 class="pest-section-title">🗺️ Pest Outbreak Risk Heatmap</h3>
-              <p class="pest-heatmap-sub">
-                Smooth spatial risk surface showing estimated dangerous zones within the scanned area.
-              </p>
-            </div>
-            <div class="pest-heatmap-badge" id="pest-heatmap-badge">Risk Surface</div>
+          <!-- Spatiotemporal context -->
+          <div class="pest-spatio-box card" id="pest-spatio-box">
+            <h3 class="pest-section-title">🛰️ Spatiotemporal &amp; Seasonal Context</h3>
+            <div class="pest-spatio-grid" id="pest-spatio-grid"></div>
           </div>
 
-          <div class="pest-heatmap-layout">
-            <div class="pest-heatmap-y-axis">
-              <span id="pest-heatmap-y-top">+2.5 km</span>
-              <span>0 km</span>
-              <span id="pest-heatmap-y-bottom">-2.5 km</span>
-            </div>
-
-            <div class="pest-heatmap-main">
-              <canvas id="pestHeatmapCanvas" width="720" height="720"></canvas>
-
-              <div class="pest-heatmap-x-axis">
-                <span id="pest-heatmap-x-left">-2.5 km</span>
-                <span>0 km</span>
-                <span id="pest-heatmap-x-right">+2.5 km</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="pest-heatmap-legend-row">
-            <span>Lower risk</span>
-            <div class="pest-heatmap-gradient"></div>
-            <span>Higher risk</span>
-          </div>
-
-          <div class="pest-heatmap-info" id="pest-heatmap-info">
-            Generate pest analysis to display spatial outbreak risk.
-          </div>
-          <!-- Pest Risk Reference Minimap Overlay -->
-          <div class="pest-minimap-card">
-            <div class="pest-minimap-header">
+          <!-- Pest outbreak heatmap -->
+          <div class="pest-heatmap-box card" id="pest-heatmap-box">
+            <div class="pest-heatmap-header">
               <div>
-                <h3 class="pest-section-title">📍 Scanned Area Reference Map</h3>
+                <h3 class="pest-section-title">🗺️ Pest Outbreak Risk Heatmap</h3>
                 <p class="pest-heatmap-sub">
-                  Shows the real-world location and boundary represented by the pest outbreak heatmap.
+                  Smooth spatial risk surface showing estimated dangerous zones within the scanned area.
                 </p>
               </div>
-              <div class="pest-heatmap-badge" id="pest-minimap-size">Waiting</div>
+              <div class="pest-heatmap-badge" id="pest-heatmap-badge">Risk Surface</div>
             </div>
 
-            <div id="pest-risk-minimap"></div>
+            <div class="pest-heatmap-layout">
+              <div class="pest-heatmap-y-axis">
+                <span id="pest-heatmap-y-top">+2.5 km</span>
+                <span>0 km</span>
+                <span id="pest-heatmap-y-bottom">-2.5 km</span>
+              </div>
 
-            <div class="pest-minimap-footer">
-              <span id="pest-minimap-coords">Generate pest analysis to locate the scanned area.</span>
+              <div class="pest-heatmap-main">
+                <canvas id="pestHeatmapCanvas" width="720" height="720"></canvas>
+
+                <div class="pest-heatmap-x-axis">
+                  <span id="pest-heatmap-x-left">-2.5 km</span>
+                  <span>0 km</span>
+                  <span id="pest-heatmap-x-right">+2.5 km</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="pest-heatmap-legend-row">
+              <span>Lower risk</span>
+              <div class="pest-heatmap-gradient"></div>
+              <span>Higher risk</span>
+            </div>
+
+            <div class="pest-heatmap-info" id="pest-heatmap-info">
+              Generate pest analysis to display spatial outbreak risk.
+            </div>
+            <!-- Pest Risk Reference Minimap Overlay -->
+            <div class="pest-minimap-card">
+              <div class="pest-minimap-header">
+                <div>
+                  <h3 class="pest-section-title">📍 Scanned Area Reference Map</h3>
+                  <p class="pest-heatmap-sub">
+                    Shows the real-world location and boundary represented by the pest outbreak heatmap.
+                  </p>
+                </div>
+                <div class="pest-heatmap-badge" id="pest-minimap-size">Waiting</div>
+              </div>
+
+              <div id="pest-risk-minimap"></div>
+
+              <div class="pest-minimap-footer">
+                <span id="pest-minimap-coords">Generate pest analysis to locate the scanned area.</span>
+              </div>
             </div>
           </div>
-        </div>
+        </div><!-- /pest-outbreak-results-panel -->
 
-        <!-- Individual pest cards -->
-        <div>
-          <h3 class="pest-section-title">📊 Pest-Specific Risk Assessment</h3>
-          <div class="pest-card-grid" id="pest-card-grid"></div>
-        </div>
+        <div id="pest-specific-results-panel">
+          <!-- Individual pest cards -->
+          <div>
+            <h3 class="pest-section-title">📊 Pest-Specific Risk Assessment</h3>
+            <div class="pest-card-grid" id="pest-card-grid"></div>
+          </div>
 
-        <!-- Recommendations -->
-        <div class="pest-recommendation-box card" id="pest-reco-box">
-          <h3 class="pest-section-title">✅ Recommended Actions</h3>
-          <ul class="pest-action-list" id="pest-action-list"></ul>
-        </div>
+          <!-- Recommendations -->
+          <div class="pest-recommendation-box card" id="pest-reco-box">
+            <h3 class="pest-section-title">✅ Recommended Actions</h3>
+            <ul class="pest-action-list" id="pest-action-list"></ul>
+          </div>
 
-        <!-- Scouting checklist -->
-        <div class="pest-recommendation-box card" id="pest-scout-box">
-          <h3 class="pest-section-title">🔍 Field Scouting Checklist</h3>
-          <ul class="pest-scouting-list" id="pest-scouting-list"></ul>
-        </div>
-
+          <!-- Scouting checklist -->
+          <div class="pest-recommendation-box card" id="pest-scout-box">
+            <h3 class="pest-section-title">🔍 Field Scouting Checklist</h3>
+            <ul class="pest-scouting-list" id="pest-scouting-list"></ul>
+          </div>
+        </div><!-- /pest-specific-results-panel -->
       </div><!-- /pest-results -->
 
     </div><!-- /pest-page -->
@@ -1630,10 +2317,23 @@
       <button class="paladin-send-btn" onclick="sendPaladinMessage()">➤</button>
     </div>
   </div>
+  <!-- PAL-AI Voice Narrator -->
+  <audio id="tab-narrator-audio" preload="auto"></audio>
 
-  <script src="/static/geo-data.js"></script>
-  <script src="/static/terrain.js"></script>
-  <script src="/static/app.js"></script>
+  <!-- PAL-AI Background Music -->
+  <audio id="palai-bgm-audio" src="/static/assets/audio/palai-bgm.mp3" preload="auto" loop></audio>
+
+  <div id="voice-unlock-toast" class="voice-unlock-toast hidden">
+    <div>
+      <strong>Voice Guide Ready</strong>
+      <span>Click to enable PAL-AI narration.</span>
+    </div>
+    <button onclick="unlockVoiceNarrator()">🔊 Enable</button>
+  </div>
+
+  <script src="/static/geo-data.js?v=welcome-voice-fix-2"></script>
+  <script src="/static/terrain.js?v=welcome-voice-fix-2"></script>
+  <script src="/static/app.js?v=welcome-voice-fix-2"></script>
 
   <script>
     function dismissPaladinHint() {
