@@ -15,6 +15,7 @@ Run:
     uvicorn main:app --reload --host 0.0.0.0 --port 8000
 """
 
+import threading
 from typing import Optional, List, Any
 import io
 import os
@@ -343,44 +344,137 @@ def get_barangays_by_city_municipality(city_municipality_code: str):
     return result
 
 
+# ── Persistent elevation cache (Upstash Redis, works across Vercel cold starts) ──
+
+# Vercel's Upstash integration may have named these either of these two ways —
+# this checks both so you don't have to worry about which one you have.
+_REDIS_URL = os.environ.get("KV_REST_API_URL") or os.environ.get(
+    "UPSTASH_REDIS_REST_URL")
+_REDIS_TOKEN = os.environ.get("KV_REST_API_TOKEN") or os.environ.get(
+    "UPSTASH_REDIS_REST_TOKEN")
+
+
+def _elevation_cache_key(lat: float, lng: float) -> str:
+    # 5 decimal places (~1.1m) matches the precision terrain.js already sends.
+    return f"elev:{round(lat, 5)}:{round(lng, 5)}"
+
+
+def _redis_pipeline(commands: list):
+    """
+    Sends a batch of Redis commands in ONE HTTP request to Upstash.
+    commands is a list like [["GET", "elev:14.6:120.9"], ["SET", "elev:14.6:120.9", "35.2"]]
+    Returns Upstash's list of results in the same order, or None if Redis isn't configured.
+    """
+    if not _REDIS_URL or not _REDIS_TOKEN:
+        return None
+
+    try:
+        response = requests.post(
+            f"{_REDIS_URL}/pipeline",
+            headers={"Authorization": f"Bearer {_REDIS_TOKEN}"},
+            json=commands,
+            timeout=10,
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        print(f"Redis cache pipeline failed (non-fatal): {e}")
+
+    return None
+
+
 @app.get("/api/elevation-batch")
 def get_elevation_batch(locations: str):
     """
-    Backend proxy for OpenTopoData elevation requests.
+    Backend proxy for OpenTopoData elevation requests, backed by a persistent
+    Redis cache (real DEM values only — never synthetic/interpolated, since
+    interpolation happens client-side after this returns).
 
     The frontend sends:
     locations=lat,lng|lat,lng|lat,lng
-
-    The backend calls OpenTopoData instead of the browser.
-    This fixes CORS blocking.
     """
-    try:
-        if not locations:
-            return {
-                "results": [],
-                "error": "Missing locations"
-            }
+    if not locations:
+        return {"results": [], "error": "Missing locations"}
 
-        response = requests.get(
-            "https://api.opentopodata.org/v1/srtm30m",
-            params={"locations": locations},
-            timeout=25
-        )
+    pairs = []
+    for loc in locations.split("|"):
+        try:
+            lat_str, lng_str = loc.split(",")
+            pairs.append((float(lat_str), float(lng_str)))
+        except (ValueError, AttributeError):
+            pairs.append(None)
 
-        if response.status_code != 200:
-            return {
-                "results": [],
-                "error": f"OpenTopoData returned status {response.status_code}",
-                "details": response.text[:500]
-            }
+    keys = [_elevation_cache_key(*p) if p else None for p in pairs]
 
-        return response.json()
+    # 1. Ask Redis for everything we might already have, in ONE request.
+    cached_values = [None] * len(pairs)
+    get_commands = [["GET", k] for k in keys if k is not None]
 
-    except Exception as e:
-        return {
-            "results": [],
-            "error": str(e)
-        }
+    if get_commands:
+        pipeline_result = _redis_pipeline(get_commands)
+        if pipeline_result:
+            cmd_i = 0
+            for i, k in enumerate(keys):
+                if k is None:
+                    continue
+                cached_values[i] = pipeline_result[cmd_i].get("result")
+                cmd_i += 1
+
+    results = [None] * len(pairs)
+    to_fetch_idx = []
+    to_fetch_locations = []
+
+    for i, p in enumerate(pairs):
+        if p is None:
+            continue
+        if cached_values[i] is not None:
+            results[i] = {"location": {"lat": p[0], "lng": p[1]},
+                          "elevation": float(cached_values[i])}
+        else:
+            to_fetch_idx.append(i)
+            to_fetch_locations.append(f"{p[0]:.5f},{p[1]:.5f}")
+
+    fetch_error = None
+
+    # 2. Only fetch whatever wasn't cached.
+    if to_fetch_locations:
+        try:
+            response = requests.get(
+                "https://api.opentopodata.org/v1/srtm30m",
+                params={"locations": "|".join(to_fetch_locations)},
+                timeout=55
+            )
+
+            if response.status_code == 200:
+                fetched = response.json().get("results", [])
+                set_commands = []
+
+                for j, idx in enumerate(to_fetch_idx):
+                    if j >= len(fetched):
+                        break
+                    r = fetched[j]
+                    results[idx] = r
+                    elevation = r.get("elevation") if isinstance(
+                        r, dict) else None
+                    if isinstance(elevation, (int, float)):
+                        set_commands.append(["SET", keys[idx], str(elevation)])
+
+                # 3. Save any newly-fetched real points back to Redis, in ONE request.
+                if set_commands:
+                    _redis_pipeline(set_commands)
+            else:
+                fetch_error = f"OpenTopoData returned status {response.status_code}"
+
+        except Exception as e:
+            fetch_error = str(e)
+
+    if fetch_error and not any(r is not None for r in results):
+        return {"results": [], "error": fetch_error}
+
+    return {
+        "results": [r if r is not None else {"elevation": None} for r in results],
+        **({"error": fetch_error, "partial": True} if fetch_error else {})
+    }
 
 
 @app.get("/api/config-check")
@@ -615,6 +709,8 @@ def get_water_bodies(lat: float, lng: float, grid_km: float = 5):
 
     debug_attempts = []
     collected = []
+    # True once at least one Overpass call actually succeeded
+    any_successful_response = False
 
     for plan in search_plans:
         if plan["type"] == "bbox":
@@ -637,6 +733,7 @@ def get_water_bodies(lat: float, lng: float, grid_km: float = 5):
 
                 debug_attempts.append(debug_item)
                 print("PAL-AI water search:", debug_item)
+                any_successful_response = True
 
                 if results:
                     collected.extend(results)
@@ -648,6 +745,7 @@ def get_water_bodies(lat: float, lng: float, grid_km: float = 5):
                         "waterBodies": collected[:180],
                         "source": endpoint,
                         "plan": plan["label"],
+                        "message": f"Found {len(collected)} mapped water feature(s).",
                         "debug": debug_attempts,
                     }
 
@@ -667,12 +765,29 @@ def get_water_bodies(lat: float, lng: float, grid_km: float = 5):
                 # small pause to avoid rapid-fire Overpass failures
                 time.sleep(0.8)
 
+    if any_successful_response:
+        # Overpass answered successfully at least once across all search plans,
+        # and genuinely found no mapped water in any of them.
+        return {
+            "ok": True,
+            "count": 0,
+            "waterBodies": [],
+            "source": None,
+            "plan": None,
+            "message": "No mapped water bodies found in this area.",
+            "debug": debug_attempts,
+        }
+
+    # Every single Overpass attempt errored or timed out — this is a failure,
+    # not "zero water bodies", and must not be reported as a clean empty result.
     return {
-        "ok": True,
+        "ok": False,
         "count": 0,
         "waterBodies": [],
         "source": None,
         "plan": None,
+        "error": "overpass_unreachable",
+        "message": "Water body lookup failed or timed out (Overpass API unreachable). Please try scanning again.",
         "debug": debug_attempts,
     }
 

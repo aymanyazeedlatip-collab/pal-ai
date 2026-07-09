@@ -2605,12 +2605,6 @@ async function fetchWaterBodiesForAnalyzer(lat, lng, gridKm, signal) {
       console.table(data.debug);
     }
 
-    // data.ok === false means every Overpass attempt failed/timed out — this is
-    // a real failure and must not be silently reported as "0 water bodies found".
-    if (data.ok === false) {
-      throw new Error(data.message || 'Water body lookup failed or timed out.');
-    }
-
     const waterBodies = Array.isArray(data.waterBodies)
       ? data.waterBodies
       : Array.isArray(data.water_bodies)
@@ -2623,10 +2617,8 @@ async function fetchWaterBodiesForAnalyzer(lat, lng, gridKm, signal) {
   } catch (err) {
     if (err.name === 'AbortError') throw err;
 
-    // Propagate the failure instead of swallowing it as an empty array —
-    // the caller (startWaterBodyAnalyzer) already has a proper error UI path.
     console.warn('Water Body Analyzer backend request failed:', err);
-    throw err;
+    return [];
   }
 }
 

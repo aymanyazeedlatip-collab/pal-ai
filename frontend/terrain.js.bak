@@ -19,7 +19,7 @@ const Terrain = (() => {
   let waterOverlayFeatures = [];
   let waterOverlayRevision = 0;
 
-  const GRID_RESOLUTION = 25;
+  const GRID_RESOLUTION = 45;
   const TERRAIN_SIZE = 18;
 
   // Adaptive vertical scaling.
@@ -81,16 +81,10 @@ const Terrain = (() => {
     return map[map.length - 1];
   }
 
-  // ── DISABLED: synthetic DEM generation ──
-  // PAL-AI must never render fake terrain. This function is intentionally left
-  // in place (rather than deleted) so any accidental call fails loudly instead
-  // of silently producing invented elevation data. Do not re-enable this path.
-  function syntheticElevation() {
-    throw new Error(
-      'syntheticElevation() is disabled. PAL-AI terrain must be built only from real or interpolated DEM data.'
-    );
-  }
-  function _unusedSyntheticElevationImpl(lat, lng, gridX, gridY, gridSize) {
+  // ── Generate synthetic DEM using multi-octave, coordinate-seeded relief ──
+  // This is not real DEM. It is used only as a last-resort visual backup when
+  // OpenTopoData/SRTM does not return usable elevation values.
+  function syntheticElevation(lat, lng, gridX, gridY, gridSize) {
     const seed = Math.sin(lat * 12.9898 + lng * 78.233) * 43758.5453;
     const rng = (n) => Math.abs(Math.sin(n * 12.9898 + seed * 78.233) * 43758.5453) % 1;
 
@@ -169,55 +163,12 @@ const Terrain = (() => {
   function demSourceLabel(meta) {
     const coverage = Number(meta?.demCoveragePct || 0);
 
-    // NOTE: this is only ever called once coverage >= DEM_MIN_COVERAGE_PCT (85%).
-    // Below that threshold, fetchElevations() blocks terrain generation entirely
-    // (see the coverage check in fetchElevations), so a "synthetic" label is
-    // never needed here.
-    if (coverage >= 95) return `Real DEM (${coverage.toFixed(0)}% coverage)`;
-    return `Real DEM with interpolated gaps (${coverage.toFixed(0)}% real coverage)`;
+    if (coverage >= 95) return `Real SRTM DEM (${coverage.toFixed(0)}% coverage)`;
+    if (coverage > 0) return `Partial SRTM DEM + interpolated fallback (${coverage.toFixed(0)}% real coverage)`;
+    return 'Synthetic fallback terrain only';
   }
 
-  // Minimum % of real DEM points required before we will render anything.
-  const DEM_MIN_COVERAGE_PCT = 85;
-  // % of real DEM points at/above which we label the result as fully "Real DEM"
-  // (small gaps still get interpolated, but are not called out in the label).
-  const DEM_FULL_COVERAGE_PCT = 95;
-
-  // Fetch a single elevation batch. A real-world 100-point OpenTopoData batch
-  // has been measured taking ~40-45s to complete — the previous 26s timeout
-  // was aborting valid, in-flight, successful requests before they finished.
-  // This timeout is set well above that observed latency.
-  async function fetchElevationBatchWithRetry(url, maxAttempts = 2) {
-    let lastError = null;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 65000);
-
-      try {
-        const resp = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (resp.ok) return resp;
-
-        // Client errors other than "too many requests" won't be fixed by retrying.
-        if (resp.status !== 429 && resp.status >= 400 && resp.status < 500) return resp;
-
-        lastError = new Error(`Elevation API returned HTTP ${resp.status}`);
-      } catch (e) {
-        clearTimeout(timeoutId);
-        lastError = e.name === 'AbortError' ? new Error('Elevation request timed out (65s)') : e;
-      }
-
-      if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-    }
-
-    throw lastError || new Error('Elevation batch request failed');
-  }
-
-  // ── Fetch DEM from OpenTopoData, with retry/backoff. No synthetic fallback. ──
+  // ── Fetch DEM from OpenTopoData (or fall back to synthetic) ──
   async function fetchElevations(lat, lng, gridKm) {
     const degPerKm = 0.009; // ~1km in degrees
     const half = (gridKm / 2) * degPerKm;
@@ -244,42 +195,27 @@ const Terrain = (() => {
       requestedPoints: points.length
     });
 
-    const BATCH_SIZE = 100;
-    let consecutiveFailedBatches = 0;
-    const MAX_CONSECUTIVE_FAILURES = 3;
-    const totalBatches = Math.ceil(points.length / BATCH_SIZE);
-    let batchIndex = 0;
+    try {
+      const BATCH_SIZE = 100;
 
-    for (let start = 0; start < points.length; start += BATCH_SIZE) {
-      batchIndex++;
-      const batchPoints = points.slice(start, start + BATCH_SIZE);
+      for (let start = 0; start < points.length; start += BATCH_SIZE) {
+        const batchPoints = points.slice(start, start + BATCH_SIZE);
 
-      // Let the user see progress instead of a frozen "Fetching..." message —
-      // OpenTopoData's public API can legitimately take ~40-45s per 100-point
-      // batch, so a full scan can take a good number of minutes.
-      if (typeof showTerrainStatus === 'function') {
-        showTerrainStatus(
-          `⏳ Fetching real elevation data — batch ${batchIndex}/${totalBatches} ` +
-          `(${realPointCount}/${start} real points so far). This can take several ` +
-          `minutes total — each batch of 100 points can take ~40-45s.`,
-          'loading'
-        );
-      }
+        const batch = batchPoints
+          .map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
+          .join('|');
 
-      const batch = batchPoints
-        .map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
-        .join('|');
+        const url = `${TERRAIN_API}/api/elevation-batch?locations=${encodeURIComponent(batch)}`;
 
-      const url = `${TERRAIN_API}/api/elevation-batch?locations=${encodeURIComponent(batch)}`;
-
-      try {
-        const resp = await fetchElevationBatchWithRetry(url, 2);
+        const resp = await Promise.race([
+          fetch(url),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 25000))
+        ]);
 
         if (resp.ok) {
           const json = await resp.json();
 
           if (json.results && json.results.length > 0) {
-            let batchRealCount = 0;
             json.results.forEach((r, i) => {
               const p = batchPoints[i];
               const value = Number(r?.elevation);
@@ -289,90 +225,58 @@ const Terrain = (() => {
                 elevGrid[idx] = value;
                 realMask[idx] = true;
                 realPointCount++;
-                batchRealCount++;
               }
             });
-            consecutiveFailedBatches = batchRealCount > 0 ? 0 : consecutiveFailedBatches + 1;
-          } else {
-            if (json.error) console.warn('Elevation batch returned an error payload:', json.error);
-            consecutiveFailedBatches++;
           }
-        } else {
-          console.warn(`Elevation batch failed after retries: HTTP ${resp.status}`);
-          consecutiveFailedBatches++;
         }
-      } catch (e) {
-        console.warn('Elevation batch request failed after retries:', e);
-        consecutiveFailedBatches++;
-      }
 
-      // Fail fast: if the elevation API looks completely unreachable (several
-      // batches in a row with zero real points), stop hammering it and let the
-      // coverage check below report a clear error instead of taking 20+ minutes
-      // to work through every remaining batch.
-      if (consecutiveFailedBatches >= MAX_CONSECUTIVE_FAILURES && realPointCount === 0) {
-        console.warn('Elevation API appears unreachable — aborting remaining batches early.');
-        break;
+        // Avoid hammering the free elevation API.
+        await new Promise(resolve => setTimeout(resolve, 60));
       }
-
-      // OpenTopoData's public API allows ~1 request/second. Going faster causes
-      // 429 rate-limit responses, which was the main cause of low real coverage.
-      await new Promise(resolve => setTimeout(resolve, 1100));
+    } catch (e) {
+      console.warn('OpenTopoData failed or timed out. Filling missing points with interpolation/fallback.', e);
     }
 
-    const totalPointCount = points.length;
-    const demCoveragePct = totalPointCount ? (realPointCount / totalPointCount) * 100 : 0;
-
-    console.log('PAL-AI terrain DEM summary:', {
-      realPointCount,
-      totalPointCount,
-      demCoveragePct: demCoveragePct.toFixed(1)
-    });
-
-    // Hard gate: never render terrain built mostly from invented data.
-    if (demCoveragePct < DEM_MIN_COVERAGE_PCT) {
-      throw new Error(
-        `Real elevation data coverage is too low. Terrain output was not generated. ` +
-        `(${realPointCount}/${totalPointCount} real DEM points, ${demCoveragePct.toFixed(1)}%; ` +
-        `${DEM_MIN_COVERAGE_PCT}% required.) This usually means OpenTopoData is rate-limiting ` +
-        `or temporarily unreachable — wait a few seconds and try scanning again.`
-      );
-    }
-
-    // Coverage is high enough to trust interpolation for the remaining gaps.
-    // Search the full grid radius so a fill is always found from real neighbors —
-    // never invented from scratch.
     let interpolatedCount = 0;
+    let syntheticCount = 0;
 
     points.forEach(p => {
       const idx = p.gy * (GRID_RESOLUTION + 1) + p.gx;
 
-      if (Number.isFinite(elevGrid[idx])) return;
+      if (elevGrid[idx] !== undefined && elevGrid[idx] !== null && Number.isFinite(elevGrid[idx])) return;
 
-      const interpolated = averageNeighborElevation(elevGrid, p.gx, p.gy, GRID_RESOLUTION);
+      const interpolated = realPointCount > 0
+        ? averageNeighborElevation(elevGrid, p.gx, p.gy, 7)
+        : null;
 
       if (Number.isFinite(interpolated)) {
         elevGrid[idx] = interpolated;
         interpolatedCount++;
       } else {
-        // Should be unreachable once coverage >= DEM_MIN_COVERAGE_PCT, but never
-        // silently invent terrain — fail loudly instead of guessing.
-        throw new Error('Could not interpolate all elevation gaps from real DEM points.');
+        elevGrid[idx] = syntheticElevation(lat, lng, p.gx, p.gy, gridKm);
+        syntheticCount++;
       }
     });
 
+    const totalPointCount = points.length;
+    const demCoveragePct = totalPointCount ? (realPointCount / totalPointCount) * 100 : 0;
     const usedAPI = realPointCount > 0;
-    const sourceMode = demCoveragePct >= DEM_FULL_COVERAGE_PCT ? 'real-dem' : 'partial-dem-interpolated';
+    const sourceMode = demCoveragePct >= 95
+      ? 'real-dem'
+      : demCoveragePct > 0
+        ? 'partial-dem'
+        : 'synthetic-fallback';
 
     const minE = Math.min(...elevGrid);
     const maxE = Math.max(...elevGrid);
 
-    console.log('PAL-AI terrain DEM summary (final):', {
+    console.log('PAL-AI terrain DEM summary:', {
       sourceMode,
       realPointCount,
       totalPointCount,
       demCoveragePct: demCoveragePct.toFixed(1),
       interpolatedCount,
+      syntheticCount,
       minE: Math.round(minE),
       maxE: Math.round(maxE),
       rangeE: Math.round(maxE - minE)
@@ -389,8 +293,8 @@ const Terrain = (() => {
       totalPointCount,
       demCoveragePct,
       interpolatedCount,
-      syntheticCount: 0,
-      fallbackFilledCount: interpolatedCount,
+      syntheticCount,
+      fallbackFilledCount: interpolatedCount + syntheticCount,
       sourceMode,
       sourceLabel: demSourceLabel({ demCoveragePct })
     };
@@ -1311,7 +1215,7 @@ const Terrain = (() => {
           maxE: data.maxE,
           elevRange,
           elevScore,
-          demSourceLabel: data.sourceLabel || (data.usedAPI ? 'Real DEM' : 'Unknown DEM source'),
+          demSourceLabel: data.sourceLabel || (data.usedAPI ? 'Real DEM' : 'Synthetic fallback'),
           demCoveragePct: data.demCoveragePct || 0,
           fallbackFilledCount: data.fallbackFilledCount || 0
         },
