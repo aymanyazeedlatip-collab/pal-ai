@@ -3413,9 +3413,14 @@ async function startWaterBodyAnalyzer(lat, lng, gridKm) {
     renderDetectedWaterBodies([], lat, lng, gridKm);
     showWaterAnalyzerStatus('0 found', 'error');
 
+    // Clear (not stale, not fake) the 3D water overlay on failure too.
+    if (typeof Terrain !== 'undefined' && typeof Terrain.setWaterFeatures === 'function') {
+      Terrain.setWaterFeatures([]);
+    }
+
     const summary = document.getElementById('water-analyzer-summary');
     if (summary) {
-      summary.textContent = 'Water scan failed. Check that the backend is running and try again.';
+      summary.textContent = 'Water body scan failed. No 3D water overlay was generated. Check that the backend is running and try again.';
     }
   }
 }

@@ -18,9 +18,23 @@ const Terrain = (() => {
   let isRendererPaused = false;
   let waterOverlayFeatures = [];
   let waterOverlayRevision = 0;
+  let waterLinesGroup = null;
 
   const GRID_RESOLUTION = 25;
   const TERRAIN_SIZE = 18;
+
+  // Real-geometry water line overlay (rivers/streams/lakes), drawn as thin
+  // 3D tubes (not flat GL lines) so they stay clearly visible and have
+  // consistent visual width regardless of browser/GPU line-width support.
+  const WATER_LINE_Y_OFFSET = 0.14;
+  const WATER_LINE_COLOR = 0x3ea8ff;
+  const WATER_LINE_RADIUS = 0.07;
+  const WATER_AREA_OUTLINE_RADIUS = 0.055;
+  // How far a water point is allowed to fall outside the scanned grid box
+  // before it is dropped (as a fraction of GRID_RESOLUTION). Keeps rivers
+  // that clip the edge of the scanned area from stretching far into space.
+  const WATER_LINE_MARGIN_FRACTION = 0.18;
+
 
   // Adaptive vertical scaling.
   // BASE_EXAGGERATION is now stronger so hills/mountains are visible by default,
@@ -476,6 +490,7 @@ const Terrain = (() => {
     camera = null;
     mesh = null;
     wireframeMesh = null;
+    waterLinesGroup = null;
   }
 
   function getFreshTerrainCanvas() {
@@ -541,6 +556,12 @@ const Terrain = (() => {
 
     // Keep scene transparent so the CSS space background behind the canvas remains visible.
     scene.background = null;
+
+    // Dedicated group for the real-geometry water overlay (rivers/streams/lakes).
+    // Cleared and rebuilt in rebuildWaterOverlayLines() whenever the terrain
+    // surface changes or new water data arrives.
+    waterLinesGroup = new THREE.Group();
+    scene.add(waterLinesGroup);
 
     // Dark blue atmospheric fog, but not fully opaque.
     scene.fog = new THREE.FogExp2(0x07111f, 0.012);
@@ -683,84 +704,187 @@ const Terrain = (() => {
     return geometries;
   }
 
-  function waterOverlayIntensity(feature) {
+
+  // ── Real-geometry water line overlay ──
+  // Converts a lat/lng into the exact same fractional grid position used by
+  // buildTerrainMesh(), so water lines line up with the mesh underneath them.
+  function latLngToTerrainGrid(lat, lng) {
+    if (!terrainData || !terrainData.step) return null;
+
+    const gxFloat = (lng - (terrainData.lng - terrainData.half)) / terrainData.step;
+    const gyFloat = (lat - (terrainData.lat - terrainData.half)) / terrainData.step;
+
+    return { gxFloat, gyFloat };
+  }
+
+  function isWithinTerrainGridBounds(gxFloat, gyFloat) {
+    const margin = GRID_RESOLUTION * WATER_LINE_MARGIN_FRACTION;
+    return (
+      gxFloat >= -margin && gxFloat <= GRID_RESOLUTION + margin &&
+      gyFloat >= -margin && gyFloat <= GRID_RESOLUTION + margin
+    );
+  }
+
+  // Bilinear interpolation of elevation at a fractional grid position.
+  function bilinearElevationAt(gxFloat, gyFloat) {
+    if (!terrainData || !Array.isArray(terrainData.elevGrid)) return null;
+
+    const N = GRID_RESOLUTION + 1;
+    const cgx = Math.max(0, Math.min(GRID_RESOLUTION, gxFloat));
+    const cgy = Math.max(0, Math.min(GRID_RESOLUTION, gyFloat));
+
+    const gx0 = Math.floor(cgx);
+    const gy0 = Math.floor(cgy);
+    const gx1 = Math.min(GRID_RESOLUTION, gx0 + 1);
+    const gy1 = Math.min(GRID_RESOLUTION, gy0 + 1);
+    const fx = cgx - gx0;
+    const fy = cgy - gy0;
+
+    const grid = terrainData.elevGrid;
+    const e00 = Number(grid[gy0 * N + gx0]);
+    const e10 = Number(grid[gy0 * N + gx1]);
+    const e01 = Number(grid[gy1 * N + gx0]);
+    const e11 = Number(grid[gy1 * N + gx1]);
+
+    if (![e00, e10, e01, e11].every(Number.isFinite)) return null;
+
+    const top = e00 + (e10 - e00) * fx;
+    const bottom = e01 + (e11 - e01) * fx;
+    return top + (bottom - top) * fy;
+  }
+
+  // Matches the vertical scale buildTerrainMesh() uses for the mesh surface,
+  // so water lines sit on (not above/below) the visible terrain.
+  function visualHeightForElevation(elevation) {
+    if (!terrainData || !Number.isFinite(terrainData.metersPerVerticalUnit) || !Number.isFinite(elevation)) {
+      return null;
+    }
+
+    const clamp = Number.isFinite(terrainData.vertClamp) ? terrainData.vertClamp : 6;
+    const avgE = Number.isFinite(terrainData.meshAvgE) ? terrainData.meshAvgE : terrainData.avgE;
+    let y = ((elevation - avgE) / terrainData.metersPerVerticalUnit) * currentExaggeration;
+    y = Math.max(-clamp, Math.min(clamp, y));
+    return y;
+  }
+
+  // True for polygon-style water bodies (lakes/reservoirs/ponds/riverbanks).
+  // Mirrors app.js's isWaterAreaFeature() classification.
+  function isWaterOverlayAreaFeature(feature) {
     const tags = feature?.tags || {};
-    const pointCount = Array.isArray(feature?.geometry) ? feature.geometry.length : 0;
-
-    if (tags.water === 'lake' || tags.natural === 'water' || tags.landuse === 'reservoir') return Math.min(1, 0.72 + pointCount / 260);
-    if (tags.waterway === 'river' || tags.waterway === 'riverbank') return 0.82;
-    if (tags.waterway === 'stream') return 0.46;
-    if (tags.waterway === 'canal' || tags.waterway === 'drain' || tags.waterway === 'ditch') return 0.38;
-    return Math.min(0.72, 0.35 + pointCount / 300);
+    return !!(
+      tags.natural === 'water' ||
+      tags.water ||
+      tags.landuse === 'reservoir' ||
+      tags.waterway === 'riverbank'
+    );
   }
 
-  function waterOverlayRadiusKm(feature, gridKm) {
-    const tags = feature?.tags || {};
-    const scale = Math.max(0.65, Math.min(1.35, Number(gridKm || 5) / 5));
+  // Projects a real water geometry (array of {lat, lon}) into terrain-space
+  // THREE.Vector3 points, following the terrain surface height. Points that
+  // fall well outside the scanned grid are dropped, breaking the line into
+  // separate segments rather than drawing a straight jump across the gap.
+  function projectWaterGeometryToSegments(geometry) {
+    const segments = [];
+    let current = [];
 
-    if (tags.water === 'lake' || tags.natural === 'water' || tags.landuse === 'reservoir') return 0.18 * scale;
-    if (tags.waterway === 'river' || tags.waterway === 'riverbank') return 0.12 * scale;
-    if (tags.waterway === 'stream') return 0.07 * scale;
-    if (tags.waterway === 'canal' || tags.waterway === 'drain' || tags.waterway === 'ditch') return 0.06 * scale;
-    return 0.08 * scale;
+    for (const point of geometry) {
+      const g = latLngToTerrainGrid(point.lat, point.lon);
+
+      if (!g || !isWithinTerrainGridBounds(g.gxFloat, g.gyFloat)) {
+        if (current.length >= 2) segments.push(current);
+        current = [];
+        continue;
+      }
+
+      const elevation = bilinearElevationAt(g.gxFloat, g.gyFloat);
+      const y = visualHeightForElevation(elevation);
+
+      if (!Number.isFinite(y)) {
+        if (current.length >= 2) segments.push(current);
+        current = [];
+        continue;
+      }
+
+      const x = (g.gxFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE;
+      const z = (g.gyFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE;
+
+      current.push(new THREE.Vector3(x, y + WATER_LINE_Y_OFFSET, z));
+    }
+
+    if (current.length >= 2) segments.push(current);
+    return segments;
   }
 
-  function approxDistanceKm(lat1, lng1, lat2, lng2) {
-    const kmLat = (lat2 - lat1) * 111.32;
-    const midLat = ((lat1 + lat2) / 2) * Math.PI / 180;
-    const kmLng = (lng2 - lng1) * 111.32 * Math.cos(midLat);
-    return Math.hypot(kmLat, kmLng);
+  function disposeGroupChildren(group) {
+    if (!group) return;
+
+    while (group.children.length) {
+      const obj = group.children.pop();
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    }
   }
 
-  function buildWaterOverlaySamples() {
-    if (!terrainData || !Array.isArray(waterOverlayFeatures) || !waterOverlayFeatures.length) return [];
+  // Rebuilds the water line overlay from waterOverlayFeatures using only
+  // real geometry returned by the Water Body Analyzer backend. Draws nothing
+  // if there is no water data — never invents rivers. Uses tube geometry
+  // (real 3D width) rather than flat GL lines, since browsers/GPUs mostly
+  // ignore LineBasicMaterial's linewidth and render 1px lines regardless.
+  function rebuildWaterOverlayLines() {
+    if (!waterLinesGroup) return;
 
-    const samples = [];
-    const maxSamples = 850;
+    disposeGroupChildren(waterLinesGroup);
+
+    if (!terrainData || !Array.isArray(waterOverlayFeatures) || !waterOverlayFeatures.length) {
+      return;
+    }
+
+    // Unlit material so the water overlay reads as a consistent bright blue
+    // regardless of scene lighting/mode, making it visible from the default view.
+    const lineMaterial = new THREE.MeshBasicMaterial({
+      color: WATER_LINE_COLOR,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: true
+    });
+
+    let drawnCount = 0;
 
     for (const feature of waterOverlayFeatures) {
       const geometries = extractWaterOverlayGeometries(feature);
       if (!geometries.length) continue;
 
-      const intensity = waterOverlayIntensity(feature);
-      const radiusKm = waterOverlayRadiusKm(feature, terrainData.gridKm);
+      const isArea = isWaterOverlayAreaFeature(feature);
+      const radius = isArea ? WATER_AREA_OUTLINE_RADIUS : WATER_LINE_RADIUS;
 
-      for (const geometry of geometries.slice(0, 24)) {
-        const step = Math.max(1, Math.ceil(geometry.length / 85));
+      for (const geometry of geometries) {
+        const segments = projectWaterGeometryToSegments(geometry);
 
-        for (let i = 0; i < geometry.length; i += step) {
-          const point = geometry[i];
-          samples.push({ lat: point.lat, lon: point.lon, intensity, radiusKm });
-          if (samples.length >= maxSamples) return samples;
+        for (const points of segments) {
+          if (points.length < 2) continue;
+
+          // Close polygon-style outlines (lakes/reservoirs) if not already closed.
+          if (isArea && points[0].distanceTo(points[points.length - 1]) > 0.001) {
+            points.push(points[0].clone());
+          }
+
+          const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.15);
+          const tubularSegments = Math.max(1, Math.min(200, points.length * 4));
+          const tubeGeom = new THREE.TubeGeometry(curve, tubularSegments, radius, 6, false);
+          const tube = new THREE.Mesh(tubeGeom, lineMaterial);
+          tube.renderOrder = 2;
+          waterLinesGroup.add(tube);
+          drawnCount++;
         }
       }
     }
 
-    return samples;
+    console.log('PAL-AI water overlay lines rendered:', {
+      drawnCount,
+      featureCount: waterOverlayFeatures.length,
+      note: 'Drawn only from real Water Body Analyzer geometry.'
+    });
   }
-
-  function waterInfluenceAtPoint(pLat, pLng, elevation, minE, rangeE, slope, waterSamples) {
-    let influence = 0;
-
-    // Sea/coastal visual proxy: DEM water surfaces are usually near the lowest elevation,
-    // but this is only a visual planning aid and not measured bathymetry.
-    if (minE <= 3 && elevation <= Math.max(3, minE + Math.max(1.5, rangeE * 0.035)) && slope <= 6) {
-      influence = Math.max(influence, 0.46);
-    }
-
-    for (const sample of waterSamples) {
-      const distance = approxDistanceKm(pLat, pLng, sample.lat, sample.lon);
-      if (distance > sample.radiusKm) continue;
-
-      const t = 1 - (distance / sample.radiusKm);
-      influence = Math.max(influence, t * sample.intensity);
-
-      if (influence >= 0.96) break;
-    }
-
-    return Math.max(0, Math.min(1, influence));
-  }
-
 
   // ── Build terrain geometry ──
   function buildTerrainMesh(elevGrid, slopeGrid, mode) {
@@ -798,7 +922,16 @@ const Terrain = (() => {
 
     const metersPerVerticalUnit = Math.max(4.5, rangeE / targetVisualHeight);
     const verticalClamp = rangeE < 20 ? 2.4 : rangeE < 120 ? 5.6 : 9.0;
-    const waterSamples = buildWaterOverlaySamples();
+
+    // Expose the exact vertical scale used for this mesh so the water line
+    // overlay (built separately, after the mesh) can match terrain height.
+    if (terrainData) {
+      terrainData.metersPerVerticalUnit = metersPerVerticalUnit;
+      terrainData.vertClamp = verticalClamp;
+      // Use the same (outlier-clamped) average the mesh vertices use, not the
+      // raw terrainData.avgE, so water line height matches the surface exactly.
+      terrainData.meshAvgE = avgE;
+    }
 
     console.log('PAL-AI terrain visual scale:', {
       mode,
@@ -807,8 +940,7 @@ const Terrain = (() => {
       rangeE: Math.round(rangeE),
       avgE: Math.round(avgE),
       metersPerVerticalUnit: Number(metersPerVerticalUnit.toFixed(2)),
-      currentExaggeration,
-      waterSamples: waterSamples.length
+      currentExaggeration
     });
 
     for (let gy = 0; gy < N; gy++) {
@@ -821,24 +953,8 @@ const Terrain = (() => {
         const x = (gx / GRID_RESOLUTION - 0.5) * SIZE;
         const z = (gy / GRID_RESOLUTION - 0.5) * SIZE;
 
-        const pLat = terrainData
-          ? terrainData.lat - terrainData.half + gy * terrainData.step
-          : 0;
-        const pLng = terrainData
-          ? terrainData.lng - terrainData.half + gx * terrainData.step
-          : 0;
-
         let y = ((e - avgE) / metersPerVerticalUnit) * currentExaggeration;
         y = Math.max(-verticalClamp, Math.min(verticalClamp, y));
-
-        const waterInfluence = terrainData
-          ? waterInfluenceAtPoint(pLat, pLng, e, minE, rangeE, slope, waterSamples)
-          : 0;
-
-        if (waterInfluence > 0.06) {
-          // Visual-only water depression. This does NOT represent measured bathymetry.
-          y -= Math.min(1.05, 0.22 + waterInfluence * 0.92) * currentExaggeration;
-        }
 
         positions.push(x, y, z);
 
@@ -862,17 +978,7 @@ const Terrain = (() => {
           t = tNorm;
         }
 
-        let c = lerpColor(COLOR_MAPS[mode] || COLOR_MAPS.elevation, t);
-
-        if (waterInfluence > 0.06) {
-          const shallow = { r: 0.20, g: 0.65, b: 0.88 };
-          const deep = { r: 0.04, g: 0.25, b: 0.70 };
-          c = {
-            r: shallow.r + (deep.r - shallow.r) * waterInfluence,
-            g: shallow.g + (deep.g - shallow.g) * waterInfluence,
-            b: shallow.b + (deep.b - shallow.b) * waterInfluence
-          };
-        }
+        const c = lerpColor(COLOR_MAPS[mode] || COLOR_MAPS.elevation, t);
 
         colors.push(c.r, c.g, c.b);
       }
@@ -939,6 +1045,10 @@ const Terrain = (() => {
     wireframeMesh = createWireframeMeshFromCurrentGeometry();
     if (wireframeMesh) scene.add(wireframeMesh);
 
+    // Rebuild the real-geometry water lines to match the freshly built mesh
+    // (height scale, exaggeration, and current waterOverlayFeatures).
+    rebuildWaterOverlayLines();
+
     updateTerrainOverlayInfo();
   }
 
@@ -964,7 +1074,7 @@ const Terrain = (() => {
     if (sourceEl) sourceEl.textContent = `DEM Source: ${terrainData.sourceLabel}`;
     if (waterEl) {
       waterEl.textContent = terrainData.waterFeatureCount > 0
-        ? `Water overlay: ${terrainData.waterFeatureCount} mapped feature(s), visual aid only`
+        ? `🔵 Mapped water bodies: ${terrainData.waterFeatureCount} feature(s) shown as blue overlay`
         : 'Water overlay: none detected yet';
     }
   }
