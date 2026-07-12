@@ -279,6 +279,16 @@ const Terrain = (() => {
           'loading'
         );
       }
+      if (typeof updateLoadingProgress === 'function') {
+        const fetchPct = Math.round(18 + (batchIndex / totalBatches) * 58);
+        updateLoadingProgress(
+          fetchPct,
+          `Fetching real DEM elevation data...\n` +
+          `Batch ${batchIndex} of ${totalBatches}\n` +
+          `Real points collected so far: ${realPointCount}/${start}\n` +
+          `Large scans may take several minutes because elevation data is requested from OpenTopoData.`
+        );
+      }
 
       const batch = batchPoints
         .map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
@@ -331,11 +341,28 @@ const Terrain = (() => {
 
       // OpenTopoData's public API allows ~1 request/second. Going faster causes
       // 429 rate-limit responses, which was the main cause of low real coverage.
+      if (typeof updateLoadingProgress === 'function') {
+        const completedPct = Math.round(22 + (batchIndex / totalBatches) * 58);
+        updateLoadingProgress(
+          completedPct,
+          `Completed elevation batch ${batchIndex}/${totalBatches}.\n` +
+          `Real DEM points collected: ${realPointCount}/${Math.min(start + BATCH_SIZE, points.length)}`
+        );
+      }
       await new Promise(resolve => setTimeout(resolve, 1100));
     }
 
     const totalPointCount = points.length;
     const demCoveragePct = totalPointCount ? (realPointCount / totalPointCount) * 100 : 0;
+
+    if (typeof updateLoadingProgress === 'function') {
+      updateLoadingProgress(
+        78,
+        `Validating DEM coverage...\n` +
+        `Real elevation points: ${realPointCount}/${points.length}\n` +
+        `Required minimum real coverage: ${DEM_MIN_COVERAGE_PCT}%`
+      );
+    }
 
     console.log('PAL-AI terrain DEM summary:', {
       realPointCount,
@@ -380,6 +407,16 @@ const Terrain = (() => {
 
     const minE = Math.min(...elevGrid);
     const maxE = Math.max(...elevGrid);
+
+    if (typeof updateLoadingProgress === 'function') {
+      updateLoadingProgress(
+        88,
+        `DEM validation passed.\n` +
+        `Real coverage: ${demCoveragePct.toFixed(1)}%\n` +
+        `Interpolated gaps: ${interpolatedCount}\n` +
+        `Building 3D terrain surface...`
+      );
+    }
 
     console.log('PAL-AI terrain DEM summary (final):', {
       sourceMode,

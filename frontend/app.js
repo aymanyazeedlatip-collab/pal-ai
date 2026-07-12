@@ -43,6 +43,91 @@ let waterAnalyzerRunId = 0;
 let waterAnalyzerAbortController = null;
 const REGIONS_CACHE = {}; // Populated by loadRegions
 
+const LOCATION_CACHE = {
+  provincesByRegion: {},
+  municipalitiesByProvince: {},
+  barangaysByMunicipality: {},
+};
+
+function setSelectOptions(selectEl, options, placeholder, disabled = false) {
+  if (!selectEl) return;
+
+  const frag = document.createDocumentFragment();
+  const first = document.createElement('option');
+  first.value = '';
+  first.textContent = placeholder;
+  frag.appendChild(first);
+
+  options.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.code;
+    opt.textContent = item.name;
+    frag.appendChild(opt);
+  });
+
+  selectEl.innerHTML = '';
+  selectEl.appendChild(frag);
+  selectEl.disabled = disabled;
+}
+
+function getLocalRegion(regionId) {
+  if (!regionId || typeof PH_GEO === 'undefined') return null;
+  return PH_GEO[String(regionId)] || PH_GEO[Number(regionId)] || null;
+}
+
+function getLocalProvinces(regionId) {
+  const region = getLocalRegion(regionId);
+  if (!region || !region.provinces) return [];
+
+  return Object.keys(region.provinces)
+    .sort((a, b) => a.localeCompare(b))
+    .map(name => ({
+      code: `local-province|${regionId}|${encodeURIComponent(name)}`,
+      name
+    }));
+}
+
+function getLocalMunicipalitiesFromProvinceValue(provinceValue) {
+  const parts = String(provinceValue || '').split('|');
+  if (parts[0] !== 'local-province') return [];
+
+  const regionId = parts[1];
+  const provinceName = decodeURIComponent(parts[2] || '');
+  const region = getLocalRegion(regionId);
+  const province = region?.provinces?.[provinceName];
+
+  if (!province || !province.municipalities) return [];
+
+  return Object.keys(province.municipalities)
+    .sort((a, b) => a.localeCompare(b))
+    .map(name => ({
+      code: `local-municipality|${regionId}|${encodeURIComponent(provinceName)}|${encodeURIComponent(name)}`,
+      name
+    }));
+}
+
+function getLocalBarangaysFromMunicipalityValue(municipalityValue) {
+  const parts = String(municipalityValue || '').split('|');
+  if (parts[0] !== 'local-municipality') return [];
+
+  const regionId = parts[1];
+  const provinceName = decodeURIComponent(parts[2] || '');
+  const municipalityName = decodeURIComponent(parts[3] || '');
+
+  const region = getLocalRegion(regionId);
+  const barangays = region?.provinces?.[provinceName]?.municipalities?.[municipalityName];
+
+  if (!Array.isArray(barangays)) return [];
+
+  return barangays
+    .slice()
+    .sort((a, b) => a.localeCompare(b))
+    .map(name => ({
+      code: `local-barangay|${encodeURIComponent(name)}`,
+      name
+    }));
+}
+
 // ── Pest Risk module state ──
 let pestRiskData = null;
 let latestTerrainScores = null;
@@ -917,7 +1002,7 @@ window.addEventListener('scroll', () => {
 let loadInterval = null;
 let loadHideTimer = null;
 
-function showLoading(title = "Generating Your Forecasts") {
+function showLoading(title = "Generating Your Forecasts", message = "Preparing analysis...") {
   const overlay = document.getElementById('loading-overlay');
   const bar = document.getElementById('load-progress');
   const factEl = document.getElementById('load-fact');
@@ -932,18 +1017,32 @@ function showLoading(title = "Generating Your Forecasts") {
 
   if (titleEl) titleEl.textContent = title;
 
-  let progress = 0;
   bar.style.width = '0%';
-  factEl.textContent = RICE_FACTS[Math.floor(Math.random() * RICE_FACTS.length)];
+  factEl.textContent = message;
 
+  // Slow automatic movement only to show the app is alive.
+  // Real terrain batch progress will override this through updateLoadingProgress().
+  let progress = 4;
   loadInterval = setInterval(() => {
-    progress = Math.min(progress + Math.random() * 12, 90);
+    progress = Math.min(progress + 2, 88);
     bar.style.width = progress + '%';
+  }, 900);
+}
 
-    if (progress > 45 && Math.random() > 0.65) {
-      factEl.textContent = RICE_FACTS[Math.floor(Math.random() * RICE_FACTS.length)];
-    }
-  }, 600);
+function setLoadingText(message) {
+  const factEl = document.getElementById('load-fact');
+  if (factEl) factEl.textContent = message;
+}
+
+function updateLoadingProgress(percent, message = null) {
+  const bar = document.getElementById('load-progress');
+
+  if (bar) {
+    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    bar.style.width = safePercent + '%';
+  }
+
+  if (message) setLoadingText(message);
 }
 
 function hideLoading() {
@@ -957,10 +1056,12 @@ function hideLoading() {
   if (!overlay || !bar) return;
 
   bar.style.width = '100%';
+  setLoadingText('Analysis complete. Preparing results...');
 
   loadHideTimer = setTimeout(() => {
     overlay.classList.add('hidden');
     bar.style.width = '0%';
+    setLoadingText('Preparing analysis...');
   }, 350);
 }
 
@@ -974,6 +1075,7 @@ function forceHideLoading() {
 
   if (overlay) overlay.classList.add('hidden');
   if (bar) bar.style.width = '0%';
+  setLoadingText('Preparing analysis...');
 }
 
 // ── Init ──
@@ -2133,45 +2235,55 @@ async function onRegionChange() {
   const munSel = document.getElementById('municipality-select');
   const barSel = document.getElementById('barangay-select');
 
-  provSel.innerHTML = '<option value="">— Select Province —</option>';
-  munSel.innerHTML = '<option value="">— Select Municipality / City —</option>';
-  barSel.innerHTML = '<option value="">— Select Barangay —</option>';
-
-  provSel.disabled = true;
-  munSel.disabled = true;
-  barSel.disabled = true;
+  setSelectOptions(provSel, [], '— Select Province —', true);
+  setSelectOptions(munSel, [], '— Select Municipality / City —', true);
+  setSelectOptions(barSel, [], '— Select Barangay —', true);
 
   if (!regionId) return;
 
+  // Instant local fallback from geo-data.js so the dropdown is never blank.
+  const localProvinces = getLocalProvinces(regionId);
+  if (localProvinces.length) {
+    setSelectOptions(provSel, localProvinces, '— Select Province —', false);
+  } else {
+    setSelectOptions(provSel, [], 'Loading provinces...', true);
+  }
+
+  // Pan forecast map immediately.
+  if (forecastMap && REGION_COORDS[regionId]) {
+    if (!lastForecastLat || !lastForecastLng) {
+      forecastMap.setView(REGION_COORDS[regionId], 9);
+      if (forecastMarker) forecastMarker.setLatLng(REGION_COORDS[regionId]);
+    } else {
+      forecastMap.setView([lastForecastLat, lastForecastLng], 10);
+    }
+  }
+
+  // Official PSGC result loads in the background and replaces fallback.
   try {
+    if (LOCATION_CACHE.provincesByRegion[regionId]) {
+      setSelectOptions(provSel, LOCATION_CACHE.provincesByRegion[regionId], '— Select Province —', false);
+      return;
+    }
+
     const res = await fetch(`${API}/api/locations/provinces/${regionId}`);
     if (!res.ok) throw new Error(`Could not load provinces: ${res.status}`);
 
     const provinces = await res.json();
+    LOCATION_CACHE.provincesByRegion[regionId] = provinces;
 
-    provinces.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.code;
-      opt.textContent = p.name;
-      provSel.appendChild(opt);
-    });
-
-    provSel.disabled = false;
-
-    // Pan forecast map to region center only if user has not placed a custom pin yet.
-    // If lastForecastLat/Lng is set, the user dragged or clicked the map — keep their pin.
-    if (forecastMap && REGION_COORDS[regionId]) {
-      if (!lastForecastLat || !lastForecastLng) {
-        forecastMap.setView(REGION_COORDS[regionId], 9);
-        if (forecastMarker) forecastMarker.setLatLng(REGION_COORDS[regionId]);
-      } else {
-        forecastMap.setView([lastForecastLat, lastForecastLng], 10);
-      }
-    }
+    // Replace fallback with official PSGC options.
+    setSelectOptions(provSel, provinces, '— Select Province —', false);
 
   } catch (err) {
     console.error(err);
-    alert("Failed to load official province list. Check backend and internet connection.");
+
+    // Keep local fallback visible instead of blanking the dropdown.
+    if (localProvinces.length) {
+      setSelectOptions(provSel, localProvinces, '— Select Province —', false);
+    } else {
+      setSelectOptions(provSel, [], 'Could not load provinces', true);
+    }
   }
 }
 
@@ -2180,31 +2292,43 @@ async function onProvinceChange() {
   const munSel = document.getElementById('municipality-select');
   const barSel = document.getElementById('barangay-select');
 
-  munSel.innerHTML = '<option value="">— Select Municipality / City —</option>';
-  barSel.innerHTML = '<option value="">— Select Barangay —</option>';
-
-  munSel.disabled = true;
-  barSel.disabled = true;
+  setSelectOptions(munSel, [], '— Select Municipality / City —', true);
+  setSelectOptions(barSel, [], '— Select Barangay —', true);
 
   if (!provinceCode) return;
+
+  // Instant local fallback if the province came from geo-data.js.
+  if (provinceCode.startsWith('local-province|')) {
+    const localMunicipalities = getLocalMunicipalitiesFromProvinceValue(provinceCode);
+    setSelectOptions(
+      munSel,
+      localMunicipalities,
+      localMunicipalities.length ? '— Select Municipality / City —' : 'No local municipalities found',
+      !localMunicipalities.length
+    );
+    return;
+  }
+
+  // Official PSGC cache.
+  if (LOCATION_CACHE.municipalitiesByProvince[provinceCode]) {
+    setSelectOptions(munSel, LOCATION_CACHE.municipalitiesByProvince[provinceCode], '— Select Municipality / City —', false);
+    return;
+  }
+
+  setSelectOptions(munSel, [], 'Loading municipalities...', true);
 
   try {
     const res = await fetch(`${API}/api/locations/municipalities/${provinceCode}`);
     if (!res.ok) throw new Error(`Could not load municipalities: ${res.status}`);
 
     const municipalities = await res.json();
+    LOCATION_CACHE.municipalitiesByProvince[provinceCode] = municipalities;
 
-    municipalities.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.code;
-      opt.textContent = m.name;
-      munSel.appendChild(opt);
-    });
-
-    munSel.disabled = false;
+    setSelectOptions(munSel, municipalities, '— Select Municipality / City —', false);
 
   } catch (err) {
     console.error(err);
+    setSelectOptions(munSel, [], 'Could not load municipalities', true);
     alert("Failed to load official city/municipality list.");
   }
 }
@@ -2213,28 +2337,42 @@ async function onMunicipalityChange() {
   const cityMunicipalityCode = document.getElementById('municipality-select').value;
   const barSel = document.getElementById('barangay-select');
 
-  barSel.innerHTML = '<option value="">— Select Barangay —</option>';
-  barSel.disabled = true;
+  setSelectOptions(barSel, [], '— Select Barangay —', true);
 
   if (!cityMunicipalityCode) return;
+
+  // Instant local fallback if the municipality came from geo-data.js.
+  if (cityMunicipalityCode.startsWith('local-municipality|')) {
+    const localBarangays = getLocalBarangaysFromMunicipalityValue(cityMunicipalityCode);
+    setSelectOptions(
+      barSel,
+      localBarangays,
+      localBarangays.length ? '— Select Barangay —' : 'No local barangays found',
+      !localBarangays.length
+    );
+    return;
+  }
+
+  // Official PSGC cache.
+  if (LOCATION_CACHE.barangaysByMunicipality[cityMunicipalityCode]) {
+    setSelectOptions(barSel, LOCATION_CACHE.barangaysByMunicipality[cityMunicipalityCode], '— Select Barangay —', false);
+    return;
+  }
+
+  setSelectOptions(barSel, [], 'Loading barangays...', true);
 
   try {
     const res = await fetch(`${API}/api/locations/barangays/${cityMunicipalityCode}`);
     if (!res.ok) throw new Error(`Could not load barangays: ${res.status}`);
 
     const barangays = await res.json();
+    LOCATION_CACHE.barangaysByMunicipality[cityMunicipalityCode] = barangays;
 
-    barangays.forEach(b => {
-      const opt = document.createElement('option');
-      opt.value = b.code;
-      opt.textContent = b.name;
-      barSel.appendChild(opt);
-    });
-
-    barSel.disabled = false;
+    setSelectOptions(barSel, barangays, '— Select Barangay —', false);
 
   } catch (err) {
     console.error(err);
+    setSelectOptions(barSel, [], 'Could not load barangays', true);
     alert("Failed to load official barangay list.");
   }
 }
@@ -3445,7 +3583,8 @@ async function runTerrainAnalysis() {
   btn.disabled = true;
   btn.innerHTML = '⏳ Loading terrain...';
 
-  showLoading("Generating 3D Terrain");
+  showLoading("Generating 3D Terrain", "Preparing terrain scan...");
+  updateLoadingProgress(8, "Reading coordinates and preparing the elevation grid...");
   showTerrainStatus('⏳ Fetching elevation data and building 3D model...', 'loading');
 
   const terrainScoresStart = document.getElementById('terrain-scores');
@@ -3464,7 +3603,9 @@ async function runTerrainAnalysis() {
   prepareWaterBodyAnalyzer(lat, lng, gridKm);
 
   try {
+    updateLoadingProgress(15, "Requesting real elevation data from the backend...");
     const terrainResult = await Terrain.init(lat, lng, gridKm, mode);
+    updateLoadingProgress(82, "3D terrain model created. Preparing map overlays...");
     if (!terrainResult) throw new Error('Terrain init returned no data');
 
     // Apply the same camera view as the Reset Camera button after terrain is fully loaded.
@@ -3485,6 +3626,7 @@ async function runTerrainAnalysis() {
 
     // Start the water scan after the 3D model is already stable.
     setTimeout(() => {
+      updateLoadingProgress(90, "Starting mapped water body scan...");
       startWaterBodyAnalyzer(lat, lng, gridKm);
     }, 600);
 

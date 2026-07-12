@@ -16,6 +16,7 @@ Run:
 """
 
 import threading
+from contextlib import asynccontextmanager
 from typing import Optional, List, Any
 import io
 import os
@@ -103,10 +104,23 @@ PALAI_TO_PSGC_REGION = {
 }
 
 # ── App ──────────────────────────────────────
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    PAL-AI startup tasks.
+    Warms PSGC location cache in the background so province,
+    municipality, and barangay dropdowns load faster.
+    """
+    threading.Thread(target=warm_psgc_cache, daemon=True).start()
+    yield
+
 app = FastAPI(
     title="PAL-AI API",
     description="Predictive Rice Agriculture using Layered Artificial Intelligence",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -214,6 +228,27 @@ def fetch_psgc_barangays():
     response = requests.get(f"{PSGC_BASE_URL}/barangays", timeout=20)
     response.raise_for_status()
     return response.json()
+
+
+def warm_psgc_cache():
+    """
+    Warm official PSGC location lists in the background so the first user
+    selection does not wait for provinces, municipalities, and barangays to
+    download from PSGC.
+    """
+    try:
+        print("PAL-AI: warming PSGC location cache...")
+        fetch_psgc_provinces()
+        fetch_psgc_cities_municipalities()
+        fetch_psgc_barangays()
+        print("PAL-AI: PSGC location cache ready.")
+    except Exception as e:
+        print(f"PAL-AI: PSGC cache warmup skipped/failed: {e}")
+
+
+@app.on_event("startup")
+def start_background_cache_warmup():
+    threading.Thread(target=warm_psgc_cache, daemon=True).start()
 
 # ── Schemas ──────────────────────────────────
 

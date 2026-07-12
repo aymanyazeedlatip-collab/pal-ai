@@ -8786,3 +8786,60 @@ body.welcome-active {
     flex-direction: column;
   }
 }
+
+/* ════════════════════════════════════════
+   Loading Screen Patch: simple spinning logo + progress textbox
+   ════════════════════════════════════════ */
+
+#loading-overlay .load-logo {
+  animation: none !important;
+  transform: none !important;
+  background: transparent;
+  border: none;
+  overflow: visible;
+}
+
+#loading-overlay .load-logo-img {
+  animation: palaiLoadingLogoSpin 1.6s linear infinite !important;
+  transform-origin: center center;
+}
+
+#loading-overlay .electron-orbit,
+#loading-overlay .electron-dot {
+  display: none !important;
+}
+
+.load-log-box {
+  width: min(520px, 86vw);
+  min-height: 76px;
+  max-height: 130px;
+  margin: 0.8rem auto 0;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(15, 23, 42, .45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+  overflow-y: auto;
+}
+
+.load-log-box .load-fact {
+  margin: 0;
+  max-width: none;
+  min-height: auto;
+  color: rgba(255, 255, 255, .86);
+  font-style: normal;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre-line;
+}
+
+@keyframes palaiLoadingLogoSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

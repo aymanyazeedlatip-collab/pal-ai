@@ -20,7 +20,7 @@
   <!-- Three.js + OrbitControls -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=terrain-realism-1" />
+  <link rel="stylesheet" href="/static/style.css?v=location-loading-v1" />
 </head>
 
 <body class="welcome-active">
@@ -89,23 +89,14 @@
       <div class="load-logo">
         <img src="/static/assets/pal-ai-logo.png" alt="PAL-AI logo" class="load-logo-img">
 
-        <span class="electron-orbit orbit-1">
-          <span class="electron-dot"></span>
-        </span>
-
-        <span class="electron-orbit orbit-2">
-          <span class="electron-dot"></span>
-        </span>
-
-        <span class="electron-orbit orbit-3">
-          <span class="electron-dot"></span>
-        </span>
       </div>
       <h2 class="load-title">Generating Your Forecasts</h2>
       <div class="load-bar">
         <div class="load-progress" id="load-progress"></div>
       </div>
-      <p class="load-fact" id="load-fact"></p>
+      <div class="load-log-box" id="load-log-box">
+        <p class="load-fact" id="load-fact">Preparing analysis...</p>
+      </div>
     </div>
   </div>
 
@@ -2331,9 +2322,9 @@
     <button onclick="unlockVoiceNarrator()">🔊 Enable</button>
   </div>
 
-  <script src="/static/geo-data.js?v=dem-real-only-1"></script>
-  <script src="/static/terrain.js?v=dem-real-only-1"></script>
-  <script src="/static/app.js?v=dem-real-only-1"></script>
+  <script src="/static/geo-data.js?v=location-loading-v1"></script>
+  <script src="/static/terrain.js?v=location-loading-v1"></script>
+  <script src="/static/app.js?v=location-loading-v1"></script>
 
   <script>
     function dismissPaladinHint() {
