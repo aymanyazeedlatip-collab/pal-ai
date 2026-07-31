@@ -1,0 +1,17 @@
+PAL-AI LANDING TERRAIN VISIBILITY FIX
+
+Baseline:
+PALAI_VISUAL_CONTEXT_AND_LANDING_TERRAIN_UPDATE.zip
+
+Problem fixed:
+The mock landing-page terrain canvas was drawing the projected screen X coordinate and then accidentally overwriting it with the terrain grid's model-space X value. This collapsed the mesh against the left edge of the canvas, leaving the independent scanner animation visible while the terrain appeared missing.
+
+Changes:
+- Preserved projected canvas coordinates by storing model coordinates as modelX/modelZ.
+- Kept the complete yellow-green terrain surface visible throughout the loop.
+- The scanner now brightens the mapped portion instead of controlling basic terrain visibility.
+- Moved the atmospheric footprint behind the mesh.
+- Strengthened surface opacity, grid contrast, and responsive visibility.
+- Preserved slow rotation, natural mountains/slopes, suitability gradient, and all project functions.
+
+No backend, forecast, terrain-analysis, pest, soil, chatbot, or PDF calculation was changed.

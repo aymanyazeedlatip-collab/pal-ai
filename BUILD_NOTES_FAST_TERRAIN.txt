@@ -1,0 +1,20 @@
+PAL-AI Calibrated Build + Fast Terrain Preload System
+
+This build keeps the latest calibrated yield calculation changes and adds back
+the older fast terrain preload style from the earlier pal-ai-main build.
+
+Added:
+- PRELOAD_REGION12_FAST_TERRAIN_CACHE.bat
+- PRELOAD_TUPI_FAST_TERRAIN_CACHE.bat
+- backend/preload_elevation_cache.py --region12-tiles support
+
+Not included:
+- No full offline DEM raster
+- No synthetic elevation fallback
+
+Recommended:
+1. START_HERE_INSTALL_AND_RUN.bat
+2. Close server
+3. PRELOAD_TUPI_FAST_TERRAIN_CACHE.bat
+4. Optional broader coverage: PRELOAD_REGION12_FAST_TERRAIN_CACHE.bat
+5. RUN_LOCAL_ONLY_AFTER_SETUP.bat

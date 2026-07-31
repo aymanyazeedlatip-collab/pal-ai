@@ -1,0 +1,36 @@
+PAL-AI FARMER UI REFRESH
+========================
+
+Baseline:
+PALAI_PALADIN_LEAF_HEALTH_DISCOLORATION_UPDATE.zip
+
+Scope:
+Frontend UI only. No model, forecast, terrain, pest, cache, chatbot, API, or calculation logic was changed.
+
+Landing page:
+- Full-screen first-view hero.
+- Navigation fully hides instead of leaving an icon rail.
+- Floating Menu button reopens the navigation drawer.
+- Added a looping translucent mock 3D terrain-generation canvas on the right side.
+- Added 3D mapping status HUD, scan line, and clearer feature trust labels.
+- Mock home terrain is decorative only; real terrain analysis remains unchanged.
+
+3D Terrain input:
+- Reorganized as two farmer-friendly steps.
+- Prominent Use My Forecast Location option.
+- Manual latitude/longitude moved into an expandable section.
+- Farm scan size and rice type explained in plain language.
+- Soil information remains optional and collapsed.
+- Added a clearer final Generate My 3D Farm Map action panel.
+
+Pest Outbreak input:
+- Added a recommended automatic setup area.
+- Organized required inputs into location/season/growth stage.
+- Reframed technical climate values into simple weather cards with units.
+- Moved coordinates, terrain score, water score, and heatmap size into optional advanced details.
+- Added a clearer final Check Pest Outbreak Risk action panel.
+
+Files changed:
+- frontend/index.html
+- frontend/style.css
+- frontend/app.js

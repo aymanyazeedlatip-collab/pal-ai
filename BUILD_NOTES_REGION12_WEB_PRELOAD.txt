@@ -1,0 +1,20 @@
+PAL-AI REGION XII WEBSITE PRELOAD UPDATE
+========================================
+
+Added a small Settings panel to the website sidebar.
+
+The "Preload Region XII Elevation Data" toggle:
+- Starts a background preload on the Render backend.
+- Uses the existing Region XII 10 km tile routine.
+- Fetches real OpenTopoData SRTM30m values only.
+- Does not create synthetic terrain or an offline DEM raster.
+- Shows live tiles, points, saved points, failures, and percentage.
+- Prevents duplicate simultaneous preload jobs.
+- Allows a graceful stop after the current request.
+- Saves to the same SQLite cache used by /api/elevation-batch.
+- Also saves to optional Upstash Redis when its existing environment variables are configured.
+
+Important deployment behavior:
+- Render Free web services use an ephemeral filesystem. SQLite points saved at runtime are lost after a restart or redeploy.
+- A paid Render persistent disk or configured Upstash Redis is needed for cache persistence across restarts.
+- Status polling keeps the backend receiving requests while the Settings panel remains open.

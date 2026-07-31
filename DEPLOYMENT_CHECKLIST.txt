@@ -1,0 +1,49 @@
+PAL-AI FINAL DEPLOYMENT CHECKLIST
+=================================
+
+FILES
+[ ] Extract the new ZIP.
+[ ] Copy its contents into the existing repository root.
+[ ] Keep the hidden .git folder.
+[ ] Do not upload backend/.env or any API key.
+
+GITHUB DESKTOP
+[ ] Commit message: Deploy final PAL-AI build with Region XII web preload
+[ ] Commit to the production branch.
+[ ] Push origin.
+
+RENDER
+[ ] Automatic deploy started from the new commit.
+[ ] Root Directory is blank.
+[ ] Build command is correct.
+[ ] Start command uses backend.main:app and $PORT.
+[ ] Health check path is /api/health.
+[ ] Existing LLM_API_KEY remains configured.
+[ ] Existing LLM_MODEL remains configured.
+[ ] Existing GOOGLE_WEATHER_API_KEY remains configured.
+[ ] /api/health returns status ok.
+[ ] /api/elevation-preload/region12/status returns ok true.
+
+VERCEL
+[ ] Root Directory is frontend.
+[ ] Framework Preset is Other.
+[ ] Build, output, and install commands are blank.
+[ ] Latest deployment is Ready.
+[ ] Hard-refresh the production site once.
+
+WEBSITE PRELOAD
+[ ] Open Menu > Settings.
+[ ] Turn on Preload Region XII Elevation Data.
+[ ] Confirm percentage, tile, and point counts update.
+[ ] Keep the page open while it runs.
+[ ] Understand that Render Free runtime SQLite is temporary.
+
+FINAL APP TEST
+[ ] Forecast works.
+[ ] Live weather works.
+[ ] Long-term PDF works.
+[ ] 3D terrain works.
+[ ] Farm Health works.
+[ ] Soil and fertilizer works.
+[ ] Pest analysis works.
+[ ] PALADIN chat and image analysis work.

@@ -1,0 +1,11 @@
+PAL-AI UI UPDATE — MONTHLY SUITABILITY CHART + SOIL BALANCE LABELS
+
+Changes:
+1. Removed the Current vs Previous vs Usual comparison panel.
+2. Replaced it with a 12-month vertical suitability bar chart using the existing monthly_outlook scores.
+3. Added direct score labels, suitability colors, month labels, current-month emphasis, and a legend.
+4. Removed the duplicate lower monthly outlook card strip to avoid showing the same monthly data twice.
+5. Moved Acidic, Rice-friendly, and Alkaline labels below the soil pH gradient.
+6. Improved pH bar height, marker size, label alignment, and vertical spacing.
+
+No backend calculations, terrain processing, soil calculations, forecasting, pest analysis, or chatbot behavior were changed.

@@ -1,0 +1,51 @@
+PAL-AI FINAL DEPLOYMENT PACKAGE TEST REPORT
+===========================================
+
+Baseline:
+PALAI_FINAL_GITHUB_VERCEL_RENDER_DEPLOY.zip
+
+New deployment feature:
+- Website Settings panel in the navigation sidebar.
+- Region XII real-elevation preload toggle.
+- Background Render task with live status polling.
+- Accurate tile, point, saved-point, failed-point, and percentage progress.
+- Graceful stop control.
+- Duplicate simultaneous jobs prevented.
+- Same SQLite cache path as /api/elevation-batch.
+- Optional Redis persistence when existing Upstash variables are configured.
+- No synthetic elevation and no offline DEM raster.
+
+Backend routes added:
+- GET  /api/elevation-preload/region12/status
+- POST /api/elevation-preload/region12/start
+- POST /api/elevation-preload/region12/stop
+
+Tests passed:
+- backend/main.py Python compilation
+- backend/preload_elevation_cache.py Python compilation
+- api/index.py Python compilation
+- frontend/app.js JavaScript syntax
+- frontend/terrain.js JavaScript syntax
+- frontend/planting-pdf.js JavaScript syntax
+- HTML parsing and duplicate-ID check
+- Required Settings elements present
+- Settings CSS and JavaScript functions present
+- render.yaml YAML parsing
+- frontend/vercel.json JSON parsing
+- FastAPI /api/health
+- FastAPI /api/regions: 16 regions
+- FastAPI /api/forecast/13: 75 annual and 300 quarterly results
+- FastAPI /api/predict
+- FastAPI /api/elevation-preload/region12/status
+- FastAPI root HTML response
+- Mocked Region XII background preload: 676 of 676 points processed and saved
+- Mocked preload reached 100% and completed without a blocking HTTP request
+
+External test limitations:
+- The complete 374-tile Region XII preload was not run in the test container because it requires a long sequence of live OpenTopoData requests.
+- PSGC live warmup could not resolve in the offline container; backend startup and fallback remained healthy.
+- Existing private Gemini and Google Weather keys were not embedded or changed.
+
+Render storage note:
+- Render Free runtime filesystem changes are temporary.
+- Use a paid persistent disk or optional Upstash Redis for cache persistence across service restarts.

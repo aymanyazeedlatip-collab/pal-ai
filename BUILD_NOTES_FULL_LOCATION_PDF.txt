@@ -1,0 +1,19 @@
+PAL-AI PDF LOCATION UPDATE
+
+Changed only the planting-calendar PDF location metadata and header rendering.
+
+- PDF metadata now carries the selected province, municipality/city, and barangay as separate fields.
+- Page 1 and all phase-calendar pages show:
+  * Region
+  * Barangay
+  * Municipality/City
+  * Province
+- Long location names wrap within the PDF header.
+- Planting predictions, phase dates, terrain, yield calibration, cache behavior, and all other features are unchanged.
+
+Validation:
+- frontend/app.js syntax passed
+- frontend/planting-pdf.js syntax passed
+- frontend/terrain.js syntax passed
+- Generated 3-page sample PDF successfully
+- Rendered and visually inspected page 1 and phase-calendar page headers

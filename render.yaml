@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: pal-ai-tupinhs
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.11
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: gemini-3.6-flash
+      - key: GOOGLE_WEATHER_API_KEY
+        sync: false
+      - key: PALAI_REGION12_PRELOAD_TILE_KM
+        value: "10"

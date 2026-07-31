@@ -1,0 +1,48 @@
+PAL-AI LONG-TERM PLANTING TIMELINE + PDF UPDATE
+================================================
+
+Scope
+-----
+Only the Long-Term Monthly Planting Days interface was extended.
+The existing planting-window scoring and prediction results were not changed.
+
+New interface features
+----------------------
+1. Selected months now show a plant-to-harvest timeline.
+2. The timeline begins with the existing seven-day planting window and displays:
+   - Planting Window
+   - Seedling Establishment
+   - Tillering and Vegetative Growth
+   - Panicle Initiation and Booting
+   - Flowering
+   - Grain Filling
+   - Ripening and Harvest
+3. A projected harvest period is shown as a date range.
+4. A Generate [Month Year] PDF button downloads a calendar for the currently selected month.
+
+PDF contents
+------------
+- Selected location and region
+- Selected month and forecast year
+- Existing recommended seven-day planting window
+- Projected seven-day harvest period
+- Suitability score and quality label
+- Rice profile and maturity duration
+- Monthly calendar with planting dates highlighted
+- Crop growth phase timeline
+- Planning note and long-range forecast disclaimer
+
+PDF implementation
+------------------
+The generator is stored locally in frontend/planting-pdf.js.
+It does not require a new online PDF service or CDN library.
+
+Unchanged systems
+-----------------
+- Long-term planting-window prediction/scoring logic
+- Calibrated yield formulas
+- XGBoost forecast values
+- Terrain-adjusted and final yield formulas
+- Terrain preload and SQLite elevation cache
+- Real elevation requirements and no-synthetic-fallback behavior
+- Pest, fertilizer, chatbot, and local run systems

@@ -1,0 +1,9 @@
+PAL-AI VISUAL CONTEXT UI UPDATE
+
+UI-only changes:
+- Enhanced landing-page mock 3D terrain with slow continuous rotation, larger scale, stronger visibility, yellow-to-green farm-suitability coloring, and more natural hills, slopes, ridges, valleys, and mountains.
+- Added visual soil dashboard for texture character, rice-soil suitability, pH position, water retention, drainage, and evidence confidence.
+- Replaced the plain Pest Spatiotemporal & Seasonal Context text grid with a season wheel, quarter strip, NDVI/EVI/LST visual bars, crop-stage display, terrain/water evidence indicators, and seasonal interpretation card.
+- Floating Menu button now hides while the sidebar drawer is open so it does not cover the PAL-AI logo. The sidebar's own close button remains available.
+
+No forecasting, yield, terrain-data, pest-risk, soil-classification, chatbot, or PDF calculations were changed.

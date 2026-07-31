@@ -1,0 +1,36 @@
+PAL-AI FARM HEALTH & SEASONAL CONDITION UPDATE
+================================================
+
+Baseline:
+PALAI_ACCURATE_TERRAIN_FETCH_PROGRESS.zip
+
+Scope:
+- Added Farm Health & Seasonal Condition as a separate Farm Site Analysis / Terrain subtab.
+- The report automatically runs after a successful 3D terrain generation.
+- Added the user-supplied assistant narration audio for this subtab.
+- Added POST /api/farm-condition.
+
+Farm-level differentiation:
+- Uses the selected terrain latitude and longitude.
+- Requests coordinate-specific daily and monthly NASA POWER climate data when internet is available.
+- Combines local temperature, rainfall, humidity, wind, solar energy, crop stage,
+  irrigation context, terrain suitability, drainage, and irrigation potential.
+- Falls back clearly to the regional PAL-AI climate proxy if NASA POWER is unavailable.
+- Does not claim direct satellite NDVI, EVI, or LST measurement.
+
+Farmer-facing result:
+- Overall Farm Condition score and status.
+- Main concern and explanation.
+- Vegetation, moisture, heat, and seasonal-fit indicators.
+- Current 30 days vs previous 30 days vs usual conditions.
+- 12-month condition outlook.
+- Prioritized farmer action plan.
+- Collapsible scientific details and source disclosure.
+
+Preserved:
+- Existing calibrated yield formulas.
+- Real DEM terrain rules and SQLite cache.
+- Long-term planting calculations and PDF.
+- Soil and fertilizer analysis.
+- Pest and PALADIN functions.
+- No synthetic terrain fallback and no offline DEM raster.

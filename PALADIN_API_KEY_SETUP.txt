@@ -1,0 +1,68 @@
+PAL-AI — WHERE TO PUT THE PALADIN API KEY
+==========================================
+
+FASTEST METHOD
+--------------
+1. Double-click CONFIGURE_PALADIN_API_KEY.bat in the main PAL-AI folder.
+2. The script creates and opens:
+
+   backend\.env
+
+3. Paste your Gemini API key after LLM_API_KEY=, for example:
+
+   LLM_API_KEY=your_private_gemini_key_here
+   LLM_MODEL=gemini-3.6-flash
+
+4. Save backend\.env.
+5. Completely stop and restart PAL-AI using RUN_LOCAL_ONLY_AFTER_SETUP.bat.
+6. Open PALADIN, enable Image Diagnosis Mode, and upload a clear rice-leaf image.
+
+HOW TO GET A GEMINI API KEY
+---------------------------
+1. Open Google AI Studio in your browser.
+2. Sign in to your Google account.
+3. Open the API Keys page.
+4. Create or copy a Gemini API key.
+5. Place the key only in backend\.env.
+
+SUPPORTED VARIABLE NAMES
+------------------------
+PAL-AI checks these names in this order:
+
+1. LLM_API_KEY
+2. GEMINI_API_KEY
+3. GOOGLE_API_KEY
+
+Using LLM_API_KEY is recommended for this PAL-AI build.
+
+IMPORTANT SECURITY RULES
+------------------------
+- Never put the API key in frontend\app.js, frontend\index.html, or terrain.js.
+- Never send backend\.env to another person.
+- Never commit backend\.env to GitHub.
+- The included .gitignore already excludes environment files.
+- If a key is exposed, revoke it and create a replacement.
+
+IMAGE QUALITY TIPS
+------------------
+For better discoloration and health analysis:
+- Use natural daylight without filters.
+- Avoid strong shadows or yellow indoor lighting.
+- Keep the leaf in focus.
+- Include a close-up of the affected leaf.
+- A second whole-plant photo can provide useful context.
+- Photograph both upper and lower leaves when symptoms differ.
+
+WHAT THE UPDATED IMAGE REPORT INCLUDES
+--------------------------------------
+- Overall visual plant-health rating
+- Discoloration alert and estimated severity
+- Observed leaf colors
+- Pattern and location of discoloration
+- Rough visible area affected
+- Likely nutrient, water, chemical, weather, pest, or disease causes
+- Pest, disease, and deficiency assessment
+- Urgency and field-verification steps
+
+The result remains AI-assisted and must be checked through field scouting,
+soil or plant testing when relevant, or a local agricultural technician.

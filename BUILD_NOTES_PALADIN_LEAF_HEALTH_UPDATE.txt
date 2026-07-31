@@ -1,0 +1,33 @@
+PAL-AI PALADIN LEAF HEALTH AND DISCOLORATION UPDATE
+===================================================
+
+Scope changed:
+- PALADIN chatbot image-analysis feature only
+- API-key configuration guidance and helper files
+
+New image-analysis output:
+- Overall visual plant-health status
+- Leaf discoloration alert
+- Observed color description
+- Discoloration pattern and leaf location
+- Rough visible area affected
+- Likely nutrient, water, chemical, weather, pest, or disease causes
+- Pest/disease/deficiency assessment
+- Field checks and immediate action
+- New Plant Health and Discoloration score meters
+- Dedicated discoloration alert card in the chatbot
+
+API configuration:
+- Added CONFIGURE_PALADIN_API_KEY.bat
+- Added PALADIN_API_KEY_SETUP.txt
+- Added backend/.env.example
+- PAL-AI accepts LLM_API_KEY, GEMINI_API_KEY, or GOOGLE_API_KEY
+- Default PALADIN model is gemini-3.6-flash
+- The API key stays in backend/.env and is never placed in frontend code
+
+Unchanged:
+- Long-Term Forecast and PDF calendars
+- Yield calibration and prediction formulas
+- 3D terrain and soil-profile systems
+- Real DEM and SQLite cache behavior
+- Pest-risk calculations outside PALADIN

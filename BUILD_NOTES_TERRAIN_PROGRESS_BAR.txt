@@ -1,0 +1,13 @@
+PAL-AI Terrain Fetch Progress Bar Update
+
+Changed only the 3D Terrain loading-status interface.
+
+The terrain status panel now reports actual completed elevation-grid points:
+- Completed progress = processed points / total requested points
+- Current batch is shown as a separate animated pending segment
+- Real DEM points received are shown separately from processed request points
+- Batch number and total batches are displayed
+- Validation and 3D-building stages are displayed after fetching reaches 100%
+
+No elevation source, cache, interpolation threshold, terrain formula, yield formula,
+or backend behavior was changed.

@@ -1,0 +1,44 @@
+PAL-AI SOIL PROFILE AND CLASSIFICATION UPDATE
+Baseline: PALAI_LONGTERM_UI_PDF_FINAL_FIX.zip
+
+Scope
+- Expanded only the 3D Terrain soil interpretation and its fertilizer context.
+- Preserved long-term planting predictions, planting PDFs, backend forecasting, calibrated yield formulas, terrain elevation rules, SQLite cache, and preload scripts.
+
+New soil inputs
+- Optional known soil texture
+- Optional measured soil pH
+- Optional organic matter percentage
+- Optional observed drainage class
+- Evidence source: terrain only, field observation, official/published map, or laboratory test
+- Optional soil test or observation date
+
+New terrain results
+- Likely/known soil texture
+- Probable terrain-derived soil group
+- Water-retention class
+- Effective drainage class
+- Rice-soil suitability score and label
+- Evidence source and confidence level
+- Evidence summary, limitations, and management recommendations
+- Explicit disclaimer distinguishing terrain inference from laboratory confirmation
+
+New 3D mode
+- Soil & Drainage Zones
+- Blue: water-retention/waterlogging tendency
+- Green: balanced drainage
+- Yellow: faster drainage/leaching tendency
+- Orange/red: erosion and shallow-soil risk
+- This is a terrain-derived proxy, not a laboratory or official soil classification map.
+
+Fertilizer integration
+- User-entered texture and pH are used when supplied.
+- Otherwise the system retains terrain-derived estimates.
+- Fertilizer compatibility now reports the soil evidence source.
+- Exact fertilizer and lime rates still require laboratory soil testing.
+
+Important invariants
+- Soil evidence does not change DEM data.
+- Soil evidence does not change topography score, yield-impact score, terrain modifier, or calibrated yield formulas.
+- No synthetic terrain fallback was added.
+- No offline DEM raster was added.
