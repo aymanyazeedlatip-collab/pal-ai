@@ -920,8 +920,10 @@ const Terrain = (() => {
         continue;
       }
 
-      const x = (g.gxFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE;
-      const z = (g.gyFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE;
+      // Rotate only the water overlay by 180 degrees in terrain space so it
+      // matches the orientation seen in the 2D Water Body Analyzer.
+      const x = -((g.gxFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE);
+      const z = -((g.gyFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE);
 
       current.push(new THREE.Vector3(x, y + WATER_LINE_Y_OFFSET, z));
     }
