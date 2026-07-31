@@ -58,8 +58,9 @@ const Terrain = (() => {
       { t: 0.50, r: 0.50, g: 0.75, b: 0.31 }, // light green
       { t: 0.65, r: 0.62, g: 0.52, b: 0.30 }, // brown
       { t: 0.80, r: 0.55, g: 0.42, b: 0.25 }, // dark brown
-      { t: 0.90, r: 0.72, g: 0.72, b: 0.72 }, // gray rock
-      { t: 1.0, r: 1.00, g: 1.00, b: 1.00 }, // snow white
+      { t: 0.88, r: 0.66, g: 0.66, b: 0.66 }, // medium gray
+      { t: 0.94, r: 0.84, g: 0.84, b: 0.84 }, // light gray
+      { t: 1.0, r: 1.00, g: 1.00, b: 1.00 }, // white peak
     ],
     slope: [
       { t: 0.0, r: 0.20, g: 0.80, b: 0.20 }, // flat = green
