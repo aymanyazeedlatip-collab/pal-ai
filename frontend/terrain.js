@@ -676,6 +676,9 @@ const Terrain = (() => {
     // Cleared and rebuilt in rebuildWaterOverlayLines() whenever the terrain
     // surface changes or new water data arrives.
     waterLinesGroup = new THREE.Group();
+    // Mirror the complete mapped content horizontally. Applying the same X
+    // reflection to terrain, wireframe, and water keeps all layers aligned.
+    waterLinesGroup.scale.x = -1;
     scene.add(waterLinesGroup);
 
     // Dark blue atmospheric fog, but not fully opaque.
@@ -920,10 +923,11 @@ const Terrain = (() => {
         continue;
       }
 
-      // Rotate only the water overlay by 180 degrees in terrain space so it
-      // matches the orientation seen in the 2D Water Body Analyzer.
-      const x = -((g.gxFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE);
-      const z = -((g.gyFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE);
+      // Use the original geographic projection. The complete 3D map is
+      // mirrored horizontally as one aligned scene, rather than rotating the
+      // water layer independently.
+      const x = (g.gxFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE;
+      const z = (g.gyFloat / GRID_RESOLUTION - 0.5) * TERRAIN_SIZE;
 
       current.push(new THREE.Vector3(x, y + WATER_LINE_Y_OFFSET, z));
     }
@@ -1164,10 +1168,14 @@ const Terrain = (() => {
     mesh = buildTerrainMesh(terrainData.elevGrid, terrainData.slopeGrid, mode);
     mesh.receiveShadow = false;
     mesh.castShadow = false;
+    mesh.scale.x = -1;
     scene.add(mesh);
 
     wireframeMesh = createWireframeMeshFromCurrentGeometry();
-    if (wireframeMesh) scene.add(wireframeMesh);
+    if (wireframeMesh) {
+      wireframeMesh.scale.x = -1;
+      scene.add(wireframeMesh);
+    }
 
     // Rebuild the real-geometry water lines to match the freshly built mesh
     // (height scale, exaggeration, and current waterOverlayFeatures).
