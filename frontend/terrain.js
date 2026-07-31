@@ -51,16 +51,13 @@ const Terrain = (() => {
   // Color palettes per mode
   const COLOR_MAPS = {
     elevation: [
-      { t: 0.0, r: 0.05, g: 0.18, b: 0.42 }, // deep water
-      { t: 0.08, r: 0.13, g: 0.44, b: 0.71 }, // water
-      { t: 0.15, r: 0.42, g: 0.68, b: 0.42 }, // lowland green
-      { t: 0.30, r: 0.19, g: 0.64, b: 0.33 }, // mid green
-      { t: 0.50, r: 0.50, g: 0.75, b: 0.31 }, // light green
-      { t: 0.65, r: 0.62, g: 0.52, b: 0.30 }, // brown
-      { t: 0.80, r: 0.55, g: 0.42, b: 0.25 }, // dark brown
-      { t: 0.88, r: 0.66, g: 0.66, b: 0.66 }, // medium gray
-      { t: 0.94, r: 0.84, g: 0.84, b: 0.84 }, // light gray
-      { t: 1.0, r: 1.00, g: 1.00, b: 1.00 }, // white peak
+      { t: 0.00, r: 0.24, g: 0.27, b: 0.30 }, // charcoal gray low elevation
+      { t: 0.18, r: 0.34, g: 0.37, b: 0.40 }, // dark gray
+      { t: 0.38, r: 0.48, g: 0.51, b: 0.54 }, // medium gray
+      { t: 0.58, r: 0.63, g: 0.66, b: 0.69 }, // silver gray
+      { t: 0.76, r: 0.78, g: 0.80, b: 0.82 }, // pale gray
+      { t: 0.90, r: 0.91, g: 0.92, b: 0.93 }, // near white
+      { t: 1.00, r: 1.00, g: 1.00, b: 1.00 }, // white highest elevation
     ],
     slope: [
       { t: 0.0, r: 0.20, g: 0.80, b: 0.20 }, // flat = green
@@ -1103,7 +1100,7 @@ const Terrain = (() => {
 
         const c = lerpColor(COLOR_MAPS[mode] || COLOR_MAPS.elevation, t);
 
-        const colorDampen = 0.88;
+        const colorDampen = mode === 'elevation' ? 0.96 : 0.88;
         colors.push(c.r * colorDampen, c.g * colorDampen, c.b * colorDampen);
       }
     }
@@ -1519,7 +1516,7 @@ const Terrain = (() => {
       if (min) min.textContent = 'Waterlog';
       if (max) max.textContent = 'Erosion';
     } else {
-      bar.style.background = 'linear-gradient(to right,#1e3a5f,#2f6f8f,#466b4b,#77743a,#7a5630,#d1d5db)';
+      bar.style.background = 'linear-gradient(to right,#3d454d,#575e66,#7a8289,#a1a7ad,#c7cbcf,#e8eaec,#ffffff)';
       if (terrainData) {
         if (min) min.textContent = Math.round(terrainData.minE) + 'm';
         if (max) max.textContent = Math.round(terrainData.maxE) + 'm';
