@@ -19,8 +19,12 @@ const Terrain = (() => {
   let waterOverlayFeatures = [];
   let waterOverlayRevision = 0;
   let waterLinesGroup = null;
+  let terrainPlatformGroup = null;
 
-  const GRID_RESOLUTION = 25;
+  const STANDARD_GRID_RESOLUTION = 25; // 26 × 26 = 676 elevation points
+  const HIGH_GRID_RESOLUTION = 36;     // 37 × 37 = 1,369 points (~2.03×)
+  let GRID_RESOLUTION = STANDARD_GRID_RESOLUTION;
+  let currentResolutionMode = 'standard';
   const TERRAIN_SIZE = 18;
 
   // Real-geometry water line overlay (rivers/streams/lakes), drawn as thin
@@ -606,6 +610,7 @@ const Terrain = (() => {
     mesh = null;
     wireframeMesh = null;
     waterLinesGroup = null;
+    terrainPlatformGroup = null;
   }
 
   function getFreshTerrainCanvas() {
@@ -663,14 +668,12 @@ const Terrain = (() => {
     renderer.setSize(w, h, false);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 
-    // Transparent renderer background so CSS gradient shows through.
-    renderer.setClearColor(0x000000, 0);
+    // Soft blue-gray white-room background sampled from the supplied reference.
+    renderer.setClearColor(0xeef8ff, 1);
     renderer.shadowMap.enabled = false;
 
     scene = new THREE.Scene();
-
-    // Keep scene transparent so the CSS space background behind the canvas remains visible.
-    scene.background = null;
+    scene.background = new THREE.Color(0xeef8ff);
 
     // Dedicated group for the real-geometry water overlay (rivers/streams/lakes).
     // Cleared and rebuilt in rebuildWaterOverlayLines() whenever the terrain
@@ -681,8 +684,8 @@ const Terrain = (() => {
     waterLinesGroup.scale.x = -1;
     scene.add(waterLinesGroup);
 
-    // Dark blue atmospheric fog, but not fully opaque.
-    scene.fog = new THREE.FogExp2(0x07111f, 0.012);
+    // Very light atmospheric depth, matching the white-room background.
+    scene.fog = new THREE.FogExp2(0xeef8ff, 0.006);
 
     camera = new THREE.PerspectiveCamera(48, w / h, 0.1, 2000);
     camera.position.set(0, 9.5, -28);
@@ -714,26 +717,17 @@ const Terrain = (() => {
     }, false);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xb8c4d6, 0.5);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.72);
     scene.add(ambientLight);
 
-    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1f2a1f, 0.4);
+    const hemiLight = new THREE.HemisphereLight(0xf8fcff, 0xb8c8d3, 0.52);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.72);
     sunLight.position.set(8, 14, 10);
     sunLight.castShadow = false;
     scene.add(sunLight);
 
-    // Star field background
-    const starGeo = new THREE.BufferGeometry();
-    const starVerts = [];
-    for (let i = 0; i < 350; i++) {
-      starVerts.push((Math.random() - 0.5) * 400, (Math.random() * 100), (Math.random() - 0.5) * 400);
-    }
-    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
-    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.45 });
-    scene.add(new THREE.Points(starGeo, starMat));
 
     // OrbitControls
     if (!THREE.OrbitControls) {
@@ -1157,6 +1151,61 @@ const Terrain = (() => {
     return new THREE.Mesh(mesh.geometry.clone(), wfMat);
   }
 
+  function disposeTerrainPlatform() {
+    if (!terrainPlatformGroup) return;
+    if (scene) scene.remove(terrainPlatformGroup);
+    terrainPlatformGroup.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(material => material.dispose());
+        else obj.material.dispose();
+      }
+    });
+    terrainPlatformGroup = null;
+  }
+
+  function rebuildTerrainPlatform() {
+    disposeTerrainPlatform();
+    if (!scene || !mesh?.geometry) return;
+
+    mesh.geometry.computeBoundingBox();
+    const bounds = mesh.geometry.boundingBox;
+    const platformY = Number.isFinite(bounds?.min?.y) ? bounds.min.y - 0.72 : -4.5;
+    const platformSize = TERRAIN_SIZE * 1.42;
+    const divisions = currentResolutionMode === 'high' ? 32 : 24;
+
+    terrainPlatformGroup = new THREE.Group();
+    terrainPlatformGroup.position.y = platformY;
+
+    const platformMaterial = new THREE.MeshBasicMaterial({
+      color: 0xd8edf7,
+      transparent: true,
+      opacity: 0.16,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const platformPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(platformSize, platformSize),
+      platformMaterial
+    );
+    platformPlane.rotation.x = -Math.PI / 2;
+    platformPlane.renderOrder = -2;
+    terrainPlatformGroup.add(platformPlane);
+
+    const grid = new THREE.GridHelper(platformSize, divisions, 0x7aa8bd, 0xa9c8d7);
+    const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
+    gridMaterials.forEach(material => {
+      material.transparent = true;
+      material.opacity = 0.34;
+      material.depthWrite = false;
+    });
+    grid.position.y = 0.025;
+    grid.renderOrder = -1;
+    terrainPlatformGroup.add(grid);
+
+    scene.add(terrainPlatformGroup);
+  }
+
   function rebuildTerrainSurface(mode = currentMode) {
     if (!scene || !terrainData) return;
 
@@ -1177,9 +1226,9 @@ const Terrain = (() => {
       scene.add(wireframeMesh);
     }
 
-    // Rebuild the real-geometry water lines to match the freshly built mesh
-    // (height scale, exaggeration, and current waterOverlayFeatures).
+    // Rebuild the real-geometry water lines and the floating reference platform.
     rebuildWaterOverlayLines();
+    rebuildTerrainPlatform();
 
     updateTerrainOverlayInfo();
   }
@@ -1197,6 +1246,7 @@ const Terrain = (() => {
     const aspectEl = document.getElementById('toi-aspect');
     const rangeEl = document.getElementById('toi-range');
     const sourceEl = document.getElementById('toi-source');
+    const resolutionEl = document.getElementById('toi-resolution');
     const waterEl = document.getElementById('toi-water');
 
     if (elevEl) elevEl.textContent = `Elevation: ${Math.round(terrainData.avgE)}m avg`;
@@ -1204,6 +1254,9 @@ const Terrain = (() => {
     if (aspectEl) aspectEl.textContent = `Aspect: ${aspectNames[Math.round(avgAspect / 45) % 8]}`;
     if (rangeEl) rangeEl.textContent = `Range: ${Math.round(terrainData.minE)}–${Math.round(terrainData.maxE)}m (${Math.round(range)}m)`;
     if (sourceEl) sourceEl.textContent = `DEM Source: ${terrainData.sourceLabel}`;
+    if (resolutionEl) {
+      resolutionEl.textContent = `Resolution: ${terrainData.resolutionMode === 'high' ? 'High' : 'Standard'} · ${Number(terrainData.elevationPointCount || 0).toLocaleString()} points`;
+    }
     if (waterEl) {
       waterEl.textContent = terrainData.waterFeatureCount > 0
         ? `🔵 Mapped water bodies: ${terrainData.waterFeatureCount} feature(s) shown as blue overlay`
@@ -1230,8 +1283,12 @@ const Terrain = (() => {
   }
 
   // ── Public API ──
-  async function init(lat, lng, gridKm, mode) {
+  async function init(lat, lng, gridKm, mode, resolutionMode = 'standard') {
     currentMode = mode;
+    currentResolutionMode = resolutionMode === 'high' ? 'high' : 'standard';
+    GRID_RESOLUTION = currentResolutionMode === 'high'
+      ? HIGH_GRID_RESOLUTION
+      : STANDARD_GRID_RESOLUTION;
     const canvas = document.getElementById('terrain-canvas');
     const placeholder = document.getElementById('terrain-placeholder');
     if (!canvas) return;
@@ -1247,6 +1304,8 @@ const Terrain = (() => {
     disposeMeshObject(wireframeMesh);
     mesh = null;
     wireframeMesh = null;
+    disposeTerrainPlatform();
+    disposeGroupChildren(waterLinesGroup);
     waterOverlayFeatures = [];
     waterOverlayRevision += 1;
 
@@ -1268,6 +1327,8 @@ const Terrain = (() => {
       step: result.step,
       half: result.half,
       gridResolution: GRID_RESOLUTION,
+      resolutionMode: currentResolutionMode,
+      elevationPointCount: (GRID_RESOLUTION + 1) * (GRID_RESOLUTION + 1),
       minE,
       maxE,
       avgE,
@@ -1801,6 +1862,11 @@ const Terrain = (() => {
     pauseRenderer,
     resumeRenderer,
     renderOnce,
+    getResolutionInfo: () => ({
+      mode: currentResolutionMode,
+      gridResolution: GRID_RESOLUTION,
+      elevationPointCount: (GRID_RESOLUTION + 1) * (GRID_RESOLUTION + 1)
+    }),
     getData: () => terrainData
   };
 })();

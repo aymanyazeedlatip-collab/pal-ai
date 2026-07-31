@@ -1,0 +1,8 @@
+PAL-AI 3D Terrain final UI update
+
+- Renderer and canvas background changed to #EEF8FF, sampled from the supplied reference image.
+- Removed the star-field background and changed fog/lighting to a soft white-room treatment.
+- Added a transparent grid platform beneath the generated terrain.
+- Added Standard resolution (26x26 = 676 points, default) and High detail (37x37 = 1,369 points, about 2.03x).
+- High detail affects only the next terrain generation and does not alter terrain/yield formulas.
+- Existing horizontal map orientation and water-overlay alignment retained.

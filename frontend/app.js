@@ -5052,11 +5052,24 @@ function renderSoilProfile(soil, slope) {
   }
 }
 
+function updateTerrainResolutionHint() {
+  const select = document.getElementById('terrain-resolution');
+  const hint = document.getElementById('terrain-resolution-hint');
+  if (!select || !hint) return;
+
+  if (select.value === 'high') {
+    hint.textContent = 'Higher detail. Uses a 37 × 37 grid (1,369 real elevation points), about twice the default requests and loading time.';
+  } else {
+    hint.textContent = 'Recommended default. Faster loading with a 26 × 26 elevation-point grid.';
+  }
+}
+
 async function runTerrainAnalysis() {
   const lat = parseFloat(document.getElementById('terrain-lat').value);
   const lng = parseFloat(document.getElementById('terrain-lng').value);
   const gridKm = parseInt(document.getElementById('terrain-grid').value) || 5;
   const mode = document.getElementById('terrain-mode').value;
+  const resolutionMode = document.getElementById('terrain-resolution')?.value === 'high' ? 'high' : 'standard';
   let terrainAnalysisCompletedForVoice = false;
 
   if (isNaN(lat) || isNaN(lng)) {
@@ -5104,8 +5117,9 @@ async function runTerrainAnalysis() {
   prepareWaterBodyAnalyzer(lat, lng, gridKm);
 
   try {
-    updateLoadingProgress(15, "Requesting real elevation data from the backend...");
-    const terrainResult = await Terrain.init(lat, lng, gridKm, mode);
+    const selectedPointCount = resolutionMode === 'high' ? 1369 : 676;
+    updateLoadingProgress(15, `Requesting ${selectedPointCount.toLocaleString()} real elevation points from the backend...`);
+    const terrainResult = await Terrain.init(lat, lng, gridKm, mode, resolutionMode);
     updateLoadingProgress(82, "3D terrain model created. Preparing map overlays...");
     if (!terrainResult) throw new Error('Terrain init returned no data');
 
@@ -5121,7 +5135,7 @@ async function runTerrainAnalysis() {
     updateTerrainMiniMap(lat, lng, gridKm);
     const terrainSourceText = terrainResult.sourceLabel || (terrainResult.usedAPI ? 'Real SRTM DEM' : 'DEM source unavailable');
     showTerrainStatus(
-      `✅ 3D terrain loaded — ${terrainSourceText}. Elevation range: ${Math.round(terrainResult.maxE - terrainResult.minE)}m.`,
+      `✅ 3D terrain loaded — ${terrainSourceText}. ${terrainResult.resolutionMode === 'high' ? 'High' : 'Standard'} resolution (${terrainResult.elevationPointCount.toLocaleString()} points). Elevation range: ${Math.round(terrainResult.maxE - terrainResult.minE)}m.`,
       'success'
     );
 

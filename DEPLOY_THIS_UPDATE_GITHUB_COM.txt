@@ -1,0 +1,14 @@
+PAL-AI FINAL 3D TERRAIN UI UPDATE — GITHUB.COM DEPLOYMENT
+
+1. Extract the ZIP.
+2. Open the existing PAL-AI repository on GitHub.com and stay on the deployment branch (normally main).
+3. At the repository root, choose Add file > Upload files.
+4. Drag every file and folder from inside the extracted build folder into the upload area.
+5. Wait until GitHub finishes processing all files.
+6. Commit directly to main with: Final 3D terrain white-room UI and high-resolution option
+7. In Vercel, wait for the new deployment to show Ready.
+8. In Render, wait for the service to show Live if it redeploys. No environment-variable change is needed.
+9. Open the live site and press Ctrl+Shift+R.
+10. Generate Standard terrain first. Then test High detail separately; it requests 1,369 elevation points and can take about twice as long.
+
+Keep the Region XII preload toggle off for now because the full preload previously exceeded the Render free-service memory limit.

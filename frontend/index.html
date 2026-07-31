@@ -20,7 +20,7 @@
   <!-- Three.js + OrbitControls -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=palai-region12-web-preload-20260731" />
+  <link rel="stylesheet" href="/static/style.css?v=palai-white-room-hires-20260731" />
 </head>
 
 <body class="welcome-active">
@@ -1009,6 +1009,18 @@
                   <span class="form-hint">This helps PAL-AI explain terrain suitability.</span>
                 </div>
               </div>
+
+              <div class="farmer-select-block terrain-resolution-block">
+                <div class="farmer-select-icon">▦</div>
+                <div class="form-group">
+                  <label class="form-label" for="terrain-resolution">3D terrain resolution</label>
+                  <select id="terrain-resolution" class="form-select" onchange="updateTerrainResolutionHint()">
+                    <option value="standard" selected>Standard — 676 elevation points</option>
+                    <option value="high">High detail — 1,369 elevation points</option>
+                  </select>
+                  <span class="form-hint" id="terrain-resolution-hint">Recommended default. Faster loading with a 26 × 26 elevation-point grid.</span>
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -1118,6 +1130,7 @@
             <div id="toi-aspect">Aspect: —</div>
             <div id="toi-range">Range: —</div>
             <div id="toi-source">DEM Source: —</div>
+            <div id="toi-resolution">Resolution: —</div>
             <div id="toi-water">Water overlay: —</div>
           </div>
           <div class="terrain-compass" id="terrain-compass" aria-label="Terrain compass">
@@ -2647,9 +2660,9 @@
   </div>
 
   <script src="/static/geo-data.js?v=palai-final-deploy-20260731"></script>
-  <script src="/static/terrain.js?v=palai-final-deploy-20260731"></script>
+  <script src="/static/terrain.js?v=palai-white-room-hires-20260731"></script>
   <script src="/static/planting-pdf.js?v=palai-final-deploy-20260731"></script>
-  <script src="/static/app.js?v=palai-region12-web-preload-20260731"></script>
+  <script src="/static/app.js?v=palai-white-room-hires-20260731"></script>
 
   <script>
     function dismissPaladinHint() {
