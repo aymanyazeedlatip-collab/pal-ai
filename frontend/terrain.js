@@ -43,8 +43,8 @@ const Terrain = (() => {
   // Adaptive vertical scaling.
   // BASE_EXAGGERATION is now stronger so hills/mountains are visible by default,
   // while EXAGGERATION remains available as an amplified inspection mode.
-  const EXAGGERATION = 0.8;
-  const BASE_EXAGGERATION = 0.5;
+  const EXAGGERATION = 0.72;
+  const BASE_EXAGGERATION = 0.44;
 
   let currentExaggeration = BASE_EXAGGERATION;
 
@@ -717,13 +717,13 @@ const Terrain = (() => {
     }, false);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.72);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.66);
     scene.add(ambientLight);
 
-    const hemiLight = new THREE.HemisphereLight(0xf8fcff, 0xb8c8d3, 0.52);
+    const hemiLight = new THREE.HemisphereLight(0xf8fcff, 0xc0c9d2, 0.46);
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffffff, 0.72);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.62);
     sunLight.position.set(8, 14, 10);
     sunLight.castShadow = false;
     scene.add(sunLight);
@@ -1102,7 +1102,8 @@ const Terrain = (() => {
 
         const c = lerpColor(COLOR_MAPS[mode] || COLOR_MAPS.elevation, t);
 
-        colors.push(c.r, c.g, c.b);
+        const colorDampen = 0.88;
+        colors.push(c.r * colorDampen, c.g * colorDampen, c.b * colorDampen);
       }
     }
 
@@ -1141,7 +1142,7 @@ const Terrain = (() => {
     if (!mesh) return null;
 
     const wfMat = new THREE.MeshBasicMaterial({
-      color: 0xd9f99d,
+      color: 0xb7bec7,
       wireframe: true,
       transparent: true,
       opacity: isWireframe ? 0.55 : 0.0,
@@ -1192,11 +1193,11 @@ const Terrain = (() => {
     platformPlane.renderOrder = -2;
     terrainPlatformGroup.add(platformPlane);
 
-    const grid = new THREE.GridHelper(platformSize, divisions, 0x7aa8bd, 0xa9c8d7);
+    const grid = new THREE.GridHelper(platformSize, divisions, 0x9ca8b3, 0xc7d0d8);
     const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
     gridMaterials.forEach(material => {
       material.transparent = true;
-      material.opacity = 0.34;
+      material.opacity = 0.28;
       material.depthWrite = false;
     });
     grid.position.y = 0.025;
