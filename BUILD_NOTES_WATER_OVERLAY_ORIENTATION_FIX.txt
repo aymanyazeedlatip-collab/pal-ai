@@ -1,0 +1,14 @@
+PAL-AI Water Overlay Orientation Fix
+
+Confirmed cause:
+- The elevation grid and water geometry both correctly used increasing latitude as +Z (north).
+- The 2D Water Body Analyzer is north-up.
+- The default 3D camera was positioned on the north side (+Z) looking south, so the complete terrain and water overlay appeared vertically reversed compared with the north-up analyzer.
+
+Fix:
+- Moved the initial, post-build, and Reset Camera positions to the south side (-Z).
+- Kept the real latitude/longitude-to-grid projection unchanged because it was already correct.
+- The default 3D view is now north-up and matches the Water Body Analyzer orientation.
+- The arrow compass continues to project true north on screen and remains correct after orbiting.
+
+No elevation, water-body, terrain-scoring, soil, forecast, or yield calculations were changed.

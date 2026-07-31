@@ -552,9 +552,11 @@ const Terrain = (() => {
   function applyDefaultTerrainCamera() {
     if (!camera) return;
 
-    // Default cinematic planning view:
-    // x = left/right, y = height, z = zoom distance
-    camera.position.set(0, 2.5, 7);
+    // Default north-up planning view:
+    // Terrain coordinates use +X = east and +Z = north. Placing the camera
+    // south of the grid (-Z) makes north appear toward the top of the screen,
+    // matching the north-up Water Body Analyzer and Leaflet reference map.
+    camera.position.set(0, 2.5, -7);
     camera.lookAt(0, 1.2, 0);
 
     if (controls) {
@@ -680,7 +682,7 @@ const Terrain = (() => {
     scene.fog = new THREE.FogExp2(0x07111f, 0.012);
 
     camera = new THREE.PerspectiveCamera(48, w / h, 0.1, 2000);
-    camera.position.set(0, 9.5, 28);
+    camera.position.set(0, 9.5, -28);
     camera.lookAt(0, 1.2, 0);
 
     canvas.addEventListener('webglcontextlost', function (event) {
@@ -1288,7 +1290,7 @@ const Terrain = (() => {
     });
 
     // Force camera to frame the terrain after mesh creation.
-    camera.position.set(0, 13, 24);
+    camera.position.set(0, 13, -24);
     camera.lookAt(0, 0, 0);
 
     if (controls) {
