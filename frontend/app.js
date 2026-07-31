@@ -5381,7 +5381,43 @@ function renderTerrainScores(scores, lat, lng, gridKm) {
   ]);
 
   document.getElementById('terrain-scores').classList.remove('hidden');
+  renderTerrainYieldSummary(scores, latestSpatiotemporalData);
   document.getElementById('terrain-scores').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderTerrainYieldSummary(terrainScores, spatioData = latestSpatiotemporalData) {
+  const banner = document.getElementById('terrain-yield-summary-banner');
+  if (!banner || !terrainScores) return;
+
+  const terrainScore = Number(terrainScores.topoScore || 0);
+  const farmDelta = Number(spatioData?.suitability_score_delta || 0);
+  const finalScore = clampValue(Math.round(terrainScore + farmDelta), 0, 100);
+
+  let baseYield = null;
+  if (forecastData?.historical?.length) {
+    baseYield = avg(forecastData.historical.map(r => r.yield));
+  } else if (window.forecastData?.historical?.length) {
+    baseYield = avg(window.forecastData.historical.map(r => r.yield));
+  } else {
+    baseYield = REGION_YIELD_AVERAGES[currentRegionId] || 2.6;
+  }
+
+  const terrainMod = getTerrainAdjustedYieldModifier(terrainScores);
+  const terrainAdjustedYield = baseYield * terrainMod;
+  const combinedModRaw = getFinalYieldModifier(finalScore, terrainScores, spatioData);
+  const finalYieldRaw = baseYield * combinedModRaw;
+  const finalYield = Math.max(finalYieldRaw, terrainAdjustedYield + 0.001);
+  const combinedMod = baseYield > 0 ? finalYield / baseYield : combinedModRaw;
+
+  setText('tys-terrain-score', `${terrainScore.toFixed(0)}/100`);
+  setText('tys-farm-delta', `${farmDelta >= 0 ? '+' : ''}${farmDelta.toFixed(0)} pts`);
+  setText('tys-final-score', `${finalScore.toFixed(0)}/100`);
+  setText('tys-base-yield', `${baseYield.toFixed(3)} t/ha`);
+  setText('tys-combined-mod', `${combinedMod >= 1 ? '+' : ''}${((combinedMod - 1) * 100).toFixed(1)}%`);
+  setText('tys-final-yield', `${finalYield.toFixed(3)} t/ha`);
+  setText('tys-final-note', `Fully adjusted prediction · higher than the terrain-adjusted yield of ${terrainAdjustedYield.toFixed(3)} t/ha`);
+
+  banner.classList.remove('hidden');
 }
 
 function metricRows(rows) {
@@ -9429,5 +9465,9 @@ function renderFarmHealthCondition(data) {
   const locationLabel = document.getElementById('farm-health-location-label');
   if (locationLabel) {
     locationLabel.textContent = `${data?.location?.label || `${data?.location?.latitude}, ${data?.location?.longitude}`} · ${data?.location?.radius_km || 5} km analysis area`;
+  }
+
+  if (latestTerrainScores) {
+    renderTerrainYieldSummary(latestTerrainScores, data);
   }
 }

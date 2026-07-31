@@ -1120,8 +1120,18 @@
             <div id="toi-source">DEM Source: —</div>
             <div id="toi-water">Water overlay: —</div>
           </div>
-          <div class="terrain-compass" id="terrain-compass">
-            <div class="compass-n">N</div>
+          <div class="terrain-compass" id="terrain-compass" aria-label="Terrain compass">
+            <div class="terrain-compass-ring" aria-hidden="true">
+              <span class="terrain-compass-cardinal north">N</span>
+              <span class="terrain-compass-cardinal east">E</span>
+              <span class="terrain-compass-cardinal south">S</span>
+              <span class="terrain-compass-cardinal west">W</span>
+            </div>
+            <div class="terrain-compass-arrow" id="terrain-compass-arrow" aria-hidden="true">
+              <span class="terrain-compass-arrow-tip"></span>
+              <span class="terrain-compass-arrow-tail"></span>
+              <span class="terrain-compass-arrow-center"></span>
+            </div>
           </div>
           <div class="terrain-legend" id="terrain-legend">
             <div class="tl-title">Elevation (m)</div>
@@ -1445,6 +1455,44 @@
           </div>
           <div class="chart-wrap"><canvas id="terrainProfileChart"></canvas></div>
         </div>
+
+        <section id="terrain-yield-summary-banner" class="terrain-yield-summary-banner hidden" aria-label="Combined terrain and farm yield summary">
+          <article class="terrain-yield-step">
+            <span class="terrain-yield-step-label">Terrain Suitability Score</span>
+            <strong class="terrain-yield-step-value" id="tys-terrain-score">—</strong>
+            <small class="terrain-yield-step-sub">from topography analysis</small>
+          </article>
+          <div class="terrain-yield-operator">+</div>
+          <article class="terrain-yield-step">
+            <span class="terrain-yield-step-label">Farm Condition Δ</span>
+            <strong class="terrain-yield-step-value" id="tys-farm-delta">—</strong>
+            <small class="terrain-yield-step-sub">from vegetation and heat proxy</small>
+          </article>
+          <div class="terrain-yield-operator">=</div>
+          <article class="terrain-yield-step highlight">
+            <span class="terrain-yield-step-label">Final Suitability Score</span>
+            <strong class="terrain-yield-step-value accent" id="tys-final-score">—</strong>
+            <small class="terrain-yield-step-sub">terrain + condition combined</small>
+          </article>
+          <div class="terrain-yield-divider" aria-hidden="true"></div>
+          <article class="terrain-yield-step">
+            <span class="terrain-yield-step-label">XGBoost Base Yield</span>
+            <strong class="terrain-yield-step-value" id="tys-base-yield">—</strong>
+            <small class="terrain-yield-step-sub">t/ha from climate model</small>
+          </article>
+          <div class="terrain-yield-operator">×</div>
+          <article class="terrain-yield-step">
+            <span class="terrain-yield-step-label">Terrain × Farm Condition</span>
+            <strong class="terrain-yield-step-value" id="tys-combined-mod">—</strong>
+            <small class="terrain-yield-step-sub">combined modifier</small>
+          </article>
+          <div class="terrain-yield-operator">=</div>
+          <article class="terrain-yield-step highlight final">
+            <span class="terrain-yield-step-label">🌾 Final Yield Estimate</span>
+            <strong class="terrain-yield-step-value accent" id="tys-final-yield">—</strong>
+            <small class="terrain-yield-step-sub" id="tys-final-note">fully adjusted prediction</small>
+          </article>
+        </section>
       </div>
 
       <!-- ══════════════════════════════════════════════════

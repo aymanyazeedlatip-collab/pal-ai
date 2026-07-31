@@ -1325,13 +1325,19 @@ const Terrain = (() => {
         controls.autoRotateSpeed = 0.5;
       }
 
-      // Update compass
-      if (camera && controls) {
-        const dx = camera.position.x - controls.target.x;
-        const dz = camera.position.z - controls.target.z;
-        const angle = Math.atan2(dx, dz) * 180 / Math.PI;
-        const compass = document.getElementById('terrain-compass');
-        if (compass) compass.style.transform = `rotate(${-angle}deg)`;
+      // Update compass using screen-projected true north (+Z in terrain space).
+      if (camera && controls && typeof THREE !== 'undefined') {
+        const compassArrow = document.getElementById('terrain-compass-arrow');
+        if (compassArrow) {
+          const target = controls.target.clone();
+          const northPoint = target.clone().add(new THREE.Vector3(0, 0, 1));
+          const projectedTarget = target.clone().project(camera);
+          const projectedNorth = northPoint.project(camera);
+          const dx = projectedNorth.x - projectedTarget.x;
+          const dy = projectedNorth.y - projectedTarget.y;
+          const angle = Math.atan2(dx, -dy) * 180 / Math.PI;
+          compassArrow.style.transform = `rotate(${Number.isFinite(angle) ? angle : 0}deg)`;
+        }
       }
 
       renderer.render(scene, camera);

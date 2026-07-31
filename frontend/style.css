@@ -1533,19 +1533,81 @@ body {
   position: absolute;
   top: 1rem;
   right: 1rem;
-  width: 44px;
-  height: 44px;
-  background: rgba(0, 0, 0, .60);
+  width: 78px;
+  height: 78px;
+  background: rgba(0, 0, 0, .66);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #84cc16;
-  font-size: .75rem;
-  font-weight: 700;
-  border: 1.5px solid rgba(132, 204, 22, .40);
+  border: 1.5px solid rgba(132, 204, 22, .34);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, .22);
   transition: transform .2s;
   pointer-events: none;
+}
+
+.terrain-compass-ring {
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .16);
+}
+
+.terrain-compass-cardinal {
+  position: absolute;
+  font-size: .58rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  color: rgba(255, 255, 255, .78);
+}
+
+.terrain-compass-cardinal.north { top: 4px; left: 50%; transform: translateX(-50%); color: #f8fafc; }
+.terrain-compass-cardinal.east { right: 6px; top: 50%; transform: translateY(-50%); }
+.terrain-compass-cardinal.south { bottom: 4px; left: 50%; transform: translateX(-50%); }
+.terrain-compass-cardinal.west { left: 6px; top: 50%; transform: translateY(-50%); }
+
+.terrain-compass-arrow {
+  position: absolute;
+  inset: 10px;
+  transform-origin: 50% 50%;
+}
+
+.terrain-compass-arrow-tip,
+.terrain-compass-arrow-tail,
+.terrain-compass-arrow-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.terrain-compass-arrow-tip {
+  top: 4px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 22px solid #ef4444;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35));
+}
+
+.terrain-compass-arrow-tail {
+  bottom: 11px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 18px solid #84cc16;
+  opacity: .92;
+}
+
+.terrain-compass-arrow-center {
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #f8fafc;
+  border: 2px solid rgba(15, 23, 42, .82);
+  transform: translate(-50%, -50%);
 }
 
 .terrain-legend {
@@ -1589,23 +1651,7 @@ body {
   margin-bottom: 0;
 }
 
-.terrain-compass {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  width: 44px;
-  height: 44px;
-  background: rgba(0, 0, 0, .6);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #84cc16;
-  font-size: .75rem;
-  font-weight: 700;
-  border: 1.5px solid rgba(132, 204, 22, .4);
-  transition: transform .2s;
-}
+
 
 .terrain-legend {
   position: absolute;
@@ -2094,8 +2140,8 @@ body {
 }
 
 .terrain-compass {
-  background: rgba(0, 0, 0, .60) !important;
-  border: 1.5px solid rgba(132, 204, 22, .40) !important;
+  background: rgba(0, 0, 0, .66) !important;
+  border: 1.5px solid rgba(132, 204, 22, .34) !important;
 }
 
 .terrain-legend {
@@ -12691,5 +12737,107 @@ body.sidebar-collapsed .sidebar-settings-label {
 
   .region12-preload-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+
+.terrain-yield-summary-banner {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1.35rem;
+  padding: 1.4rem 1.5rem;
+  border-radius: 24px;
+  background: linear-gradient(90deg, #0f172a 0%, #0f2e2f 35%, #113d20 100%);
+  border: 1px solid rgba(132, 204, 22, .22);
+  box-shadow: var(--sh2);
+}
+
+.terrain-yield-step {
+  min-width: 120px;
+  flex: 1 1 120px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .28rem;
+}
+
+.terrain-yield-step.highlight {
+  padding: .75rem .9rem;
+  border-radius: 16px;
+  background: rgba(132, 204, 22, .08);
+  border: 1px solid rgba(132, 204, 22, .24);
+}
+
+.terrain-yield-step.highlight.final {
+  background: rgba(132, 204, 22, .10);
+}
+
+.terrain-yield-step-label {
+  color: rgba(255, 255, 255, .72);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.terrain-yield-step-value {
+  font-family: var(--font-h);
+  color: #ffffff;
+  font-size: 1.9rem;
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.terrain-yield-step-value.accent {
+  color: #84cc16;
+}
+
+.terrain-yield-step-sub {
+  color: rgba(255, 255, 255, .72);
+  font-size: .76rem;
+  line-height: 1.35;
+}
+
+.terrain-yield-operator {
+  align-self: center;
+  color: rgba(255, 255, 255, .86);
+  font-family: var(--font-h);
+  font-size: 1.7rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.terrain-yield-divider {
+  width: 1px;
+  min-height: 96px;
+  align-self: stretch;
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,.18), transparent);
+}
+
+@media (max-width: 1180px) {
+  .terrain-yield-divider { display: none; }
+}
+
+@media (max-width: 760px) {
+  .terrain-compass {
+    width: 68px;
+    height: 68px;
+  }
+
+  .terrain-yield-summary-banner {
+    padding: 1.1rem 1rem;
+    gap: .8rem;
+  }
+
+  .terrain-yield-step {
+    flex-basis: calc(50% - .8rem);
+    min-width: 140px;
+  }
+
+  .terrain-yield-step-value {
+    font-size: 1.55rem;
   }
 }
